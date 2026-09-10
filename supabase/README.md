@@ -12,9 +12,13 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 | 7 | `008_forecast_inventory.sql` | **Tuần 7‑8**: `inventory_inbound`, `forecasts`/`forecast_backtests`, `forecast_sku`/`run_forecasts` (pg_cron 03:15 UTC), `inventory_plan(t, lead_time, safety, p90, inbound)` cho trang Tồn kho & scenario, `replenish_rationale`, `run_rules` bản mới dùng forecast, view `v_forecast_accuracy` | Bắt buộc |
 | 8 | `009_reviews_voc.sql` | **Tuần 9‑10**: `review_topics` (seed 13 chủ đề), `review_classifications` + `classify_review(s)` (trigger khi insert review), `voc_tickets`, `response_drafts` + `check_response_policy` + guard duyệt (người duyệt ≠ người soạn, chặn từ cấm), `suggest_response`, views `v_review_triage`/`v_review_topic_summary`/`v_classification_precision`, rule `REVIEW_CLUSTER`, policy `prohibited_phrases` | Bắt buộc |
 | 9 | `010_actions.sql` | **Tuần 11**: `actions` + `rollbacks` (idempotency, dry_run/canary/live, guard chặn ghi trực tiếp), `execute_recommendation(rec, mode)`, `rollback_action`, `check_auto_rollbacks` (cron 03:30), view `v_automation_stats`, policy `automation_live`/`canary_asins`/`rollback_watch_hours`/`rollback_units_drop_pct`/`max_live_actions_per_day` | Bắt buộc |
+| 10 | `011_measurement.sql` | **Tuần 12‑14**: `action_impact`/`action_impacts` (incremental CP có đối chứng + CI 95%), `pilot_scorecard` (4 bằng chứng, automation rate, incidents), bảng `pilot_reports` | Bắt buộc |
 | 4 | `005_data_contract.sql` | **Tuần 1‑2**: `policy_register`, `cogs_history`, `kpi_baseline`, `import_jobs`, cột lead time/nguồn dữ liệu, trigger gán cấp duyệt từ policy, view `v_data_readiness` (gate ≥90%), RPC `capture_kpi_baseline` | Bắt buộc |
 
 Tất cả các file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
+
+## Sau khi chạy 011
+Trang Đo lường đọc trực tiếp, không cần cron. Để bằng chứng 3 có số liệu cần ≥3 ngày snapshot trước và sau mỗi lệnh canary/live. Chốt KPI baseline (khối Sẵn sàng dữ liệu trên Tổng quan) để có cột baseline.
 
 ## Sau khi chạy 010
 Mặc định mọi lệnh chỉ chạy thử. Để pilot: Chính sách → thêm ASIN vào danh sách canary → trên Gợi ý đã duyệt bấm Chạy thử rồi Thực thi canary. Connector hiện là `internal` (cập nhật giá trong hệ thống + audit); khi có SP‑API credentials sẽ thay bằng Edge Function, không đổi schema.

@@ -16,6 +16,7 @@ const NAV = [
   { href: '/add-sku', label: 'Thêm SKU', icon: '+', write: true },
   { href: '/import', label: 'Nhập dữ liệu', icon: '⇪', write: true },
   { href: '/actions', label: 'Lệnh thực thi', icon: '⚡' },
+  { href: '/measurement', label: 'Đo lường', icon: '◎' },
   { href: '/audit', label: 'Nhật ký', icon: '≡' },
   { href: '/settings/policy', label: 'Chính sách', icon: '§' },
   { href: '/settings/members', label: 'Thành viên', icon: '⚙', owner: true },

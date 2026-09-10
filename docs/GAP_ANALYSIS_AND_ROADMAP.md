@@ -107,10 +107,11 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] **Gate check**: `v_automation_stats.uncontrolled_writes` (ghi thật không gắn gợi ý đã duyệt) hiển thị đầu trang – phải = 0.
 - [ ] Adapter SP‑API thật (Edge Function nhận action `queued`, LWA token, rate limit theo Amazon) – khi có credentials; schema không đổi.
 
-### Tuần 12‑14 – Đo lường & quyết định
-- [ ] Bảng `experiments`/đánh dấu trước‑sau cho từng action; tính incremental CP với khoảng tin cậy (so với cohort ASIN không tác động).
-- [ ] Trang **Đo lường**: incremental contribution, inventory impact, VOC resolution rate, operator time saved, automation rate (% action L0 tự chạy), compliance incidents, backlog.
-- [ ] Xuất **báo cáo pilot** (PDF/Markdown) với 4 bằng chứng: dữ liệu đối soát, operator dùng workflow, action tạo impact, 0 incident.
+### Tuần 12‑14 – Đo lường & quyết định ✅ (011)
+- [x] `action_impact(action, days)`: trước/sau ±N ngày cho từng lệnh thật, hiệu chỉnh theo nhóm đối chứng (ASIN không có lệnh trong cùng cửa sổ – diff‑in‑diff), CI 95% xấp xỉ, cờ có ý nghĩa thống kê.
+- [x] `pilot_scorecard(t, days)`: một JSON gom North Star (baseline vs 30 ngày), 4 bằng chứng với tiêu chí đạt/chưa, automation rate (% quyết định L0), operator time saved (ước tính), incidents, backlog, VOC resolution, forecast vs naive.
+- [x] Trang **Đo lường** `/measurement`: kết luận N/4, 4 thẻ bằng chứng, bảng baseline vs hiện tại, incremental CP theo lệnh, xuất **báo cáo pilot Markdown** (tải/sao chép) + lưu `pilot_reports` kèm quyết định Mở rộng / Gia hạn / Dừng.
+- [ ] Xuất PDF (hiện Markdown – dán vào Notion/Docs; PDF khi cần thêm thư viện).
 
 ---
 
