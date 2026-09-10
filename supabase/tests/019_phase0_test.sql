@@ -65,8 +65,7 @@ BEGIN
   -- sp_api connected → live không còn bị chặn bởi kiểm tra kênh (nhưng kênh chưa triển khai → failed, không succeeded)
   PERFORM set_config('request.jwt.claims', '', true);
   INSERT INTO public.data_sources (tenant_id, kind, name, status, feeds) VALUES (t, 'sp_api', 'test', 'connected', '{}');
-  PERFORM pg_temp.as_user(u_op);
-  UPDATE public.recommendations SET status = 'approved' WHERE id = rec; -- đã executed → không đổi; tạo rec mới
+  INSERT INTO _t SELECT 'action: canary marks rec executed', (SELECT status FROM public.recommendations WHERE id = rec) = 'executed';
   PERFORM pg_temp.as_user(u_qa);
   INSERT INTO public.recommendations (tenant_id, sku_id, asin, type, title, current_value, proposed_value, risk_score, approval_tier, status)
   VALUES (t, sk1, 'B0TEST0019', 'price_adjust', 'P0 live test', 30.5, 30.8, 10, 'L0', 'draft') RETURNING id INTO rec;
