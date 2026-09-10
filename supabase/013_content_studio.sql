@@ -322,7 +322,7 @@ WITH pub AS (
          SUM(sessions) AS sessions_30d
   FROM public.sku_daily_snapshots WHERE date > CURRENT_DATE - 30 GROUP BY sku_id
 ), med AS (
-  SELECT tenant_id, percentile_cont(0.5) WITHIN GROUP (ORDER BY c.cvr_30d) AS cvr_median
+  SELECT tenant_id, (percentile_cont(0.5) WITHIN GROUP (ORDER BY c.cvr_30d))::numeric AS cvr_median
   FROM cvr c JOIN public.amazon_skus k ON k.id = c.sku_id GROUP BY tenant_id
 ), neg AS (
   SELECT r.tenant_id, r.asin, count(*) AS neg_reviews_90d
@@ -352,7 +352,7 @@ SELECT k.tenant_id, k.id AS sku_id, k.asin, k.title,
          CASE WHEN COALESCE(f.facts_verified,0) = 0 THEN 'Chưa có Product Fact đã xác minh' END,
          CASE WHEN NOT EXISTS (SELECT 1 FROM pub WHERE pub.sku_id=k.id AND kind='aplus') THEN 'Chưa có A+ được ghi nhận' END,
          CASE WHEN NOT EXISTS (SELECT 1 FROM pub WHERE pub.sku_id=k.id AND kind='bullets') THEN 'Chưa quản lý bullets' END,
-         CASE WHEN c.cvr_30d IS NOT NULL AND m.cvr_median IS NOT NULL AND c.cvr_30d < m.cvr_median * 0.8 THEN format('CVR %s%% dưới median %s%%', round(c.cvr_30d*100,1), round(m.cvr_median*100,1)) END,
+         CASE WHEN c.cvr_30d IS NOT NULL AND m.cvr_median IS NOT NULL AND c.cvr_30d < m.cvr_median * 0.8 THEN format('CVR %s%% dưới median %s%%', round((c.cvr_30d*100)::numeric,1), round((m.cvr_median*100)::numeric,1)) END,
          CASE WHEN COALESCE(n.neg_reviews_90d,0) >= 3 THEN format('%s review ≤3★ trong 90 ngày – cần giải thích trong listing', n.neg_reviews_90d) END
        ], NULL) AS reasons
 FROM public.amazon_skus k
