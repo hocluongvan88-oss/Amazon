@@ -313,6 +313,7 @@ function TopicsTab({ summary }: { summary: Summary[] }) {
 /* ---------------- Tickets ---------------- */
 function TicketsTab({ tickets, members, canWrite, userId, onChanged }: { tickets: Ticket[]; members: Member[]; canWrite: boolean; userId: string | null; onChanged: () => void }) {
   const [showClosed, setShowClosed] = React.useState(false);
+  const [taskFor, setTaskFor] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   async function patch(id: string, p: Record<string, unknown>) { const { error } = await supabase.from('voc_tickets').update(p).eq('id', id); if (error) setErr(error.message); else onChanged(); }
   const list = tickets.filter((t) => showClosed || t.status === 'open' || t.status === 'investigating');
@@ -333,15 +334,57 @@ function TicketsTab({ tickets, members, canWrite, userId, onChanged }: { tickets
               </div>
               {canWrite && (
                 <div className="flex flex-wrap gap-2 items-center shrink-0">
+                  <button className={btn.secondary} onClick={() => setTaskFor(taskFor === t.id ? null : t.id)}>{taskFor === t.id ? 'Đóng' : 'Tạo task →'}</button>
                   <select value={t.assigned_to ?? ''} onChange={(e) => patch(t.id, { assigned_to: e.target.value || null })} className={`${input} w-32 text-xs`}><option value="">— chưa gán —</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.user_id === userId ? 'Tôi' : `${m.role} · ${m.user_id.slice(0, 6)}`}</option>)}</select>
                   <select value={t.status} onChange={(e) => { const s = e.target.value; if (s === 'resolved' || s === 'wont_fix') { const note = prompt('Ghi chú xử lý:'); if (note == null) return; patch(t.id, { status: s, resolution_note: note }); } else patch(t.id, { status: s }); }} className={`${input} w-32 text-xs`}>{Object.entries(TSTATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
                 </div>
               )}
+              {taskFor === t.id && <TicketTasks ticketId={t.id} onDone={() => { setTaskFor(null); onChanged(); }} />}
             </li>
           ))}
         </ul>)}</Paged>
       )}
     </Card>
+  );
+}
+
+/* ---------------- Ticket → tasks (P0‑4) ---------------- */
+type Suggest = { type: string; priority: string; title: string; why: string };
+function TicketTasks({ ticketId, onDone }: { ticketId: string; onDone: () => void }) {
+  const [sug, setSug] = React.useState<Suggest[] | null>(null);
+  const [picked, setPicked] = React.useState<Set<number>>(new Set());
+  const [err, setErr] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc('suggest_tasks_for_ticket', { p_ticket: ticketId });
+      if (cancelled) return;
+      if (error) setErr(error.message); else { const arr = (data ?? []) as Suggest[]; setSug(arr); setPicked(new Set(arr.map((_, i) => i))); }
+    })();
+    return () => { cancelled = true; };
+  }, [ticketId]);
+  async function create() {
+    if (!sug) return;
+    setBusy(true); setErr(null);
+    const { error } = await supabase.rpc('create_tasks_from_ticket', { p_ticket: ticketId, p_tasks: sug.filter((_, i) => picked.has(i)) });
+    setBusy(false);
+    if (error) setErr(error.message); else onDone();
+  }
+  const TL: Record<string, string> = { content: 'Content', content_opportunity: 'Cơ hội content', qa_product: 'QA sản phẩm', ads_guardrail: 'Ads guardrail', support: 'CSKH', inventory_investigation: 'Điều tra tồn kho', other: 'Khác' };
+  if (err) return <div className="w-full mt-2"><ErrorBox message={err} /></div>;
+  if (!sug) return <p className="w-full text-xs text-gray-500 mt-2">Đang gợi ý task…</p>;
+  return (
+    <div className="w-full mt-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
+      <p className="text-sm font-medium">Biến tín hiệu VoC thành hành động — chọn task cần tạo</p>
+      {sug.map((x, i) => (
+        <label key={i} className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={picked.has(i)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(i); else n.delete(i); setPicked(n); }} className="mt-1 rounded" />
+          <span><Badge className="bg-white text-gray-700 ring-gray-500/20">{x.priority}</Badge> <b>{TL[x.type] ?? x.type}</b> · {x.title}<br /><span className="text-xs text-gray-600">{x.why}</span></span>
+        </label>
+      ))}
+      <button className={btn.primary} disabled={busy || picked.size === 0} onClick={create}>{busy ? 'Đang tạo…' : `Tạo ${picked.size} task`}</button>
+    </div>
   );
 }
 

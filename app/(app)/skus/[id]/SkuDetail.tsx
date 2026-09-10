@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import ControlRoom from '@/components/ControlRoom';
 import { LIMITS } from '@/lib/limits';
 import RiskBreakdown, { type RiskComponents } from '@/components/RiskBreakdown';
 import Link from 'next/link';
@@ -175,6 +176,9 @@ export default function SkuDetail({ id }: { id: string }) {
         <ChartCard title="Tồn kho" empty={!hasState} emptyHint="Snapshot hằng ngày sẽ tích luỹ từ hôm nay."><InventoryChart data={series} reorderPoint={sku.reorder_point} eta={m?.stockout_eta ?? null} /></ChartCard>
         <ChartCard title="Quảng cáo & TACoS" empty={!hasAds} emptyHint="Nhập báo cáo Sponsored Products theo ngày (tuỳ chọn)."><AdsChart data={series} /></ChartCard>
       </div>
+
+      {/* ASIN Control Room (P0‑4) */}
+      <ControlRoom skuId={sku.id} asin={sku.asin} canWrite={can('voc.triage') || can('content.draft') || can('exception.resolve')} />
 
       {/* Tabs */}
       <Card>

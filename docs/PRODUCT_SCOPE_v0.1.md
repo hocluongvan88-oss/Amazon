@@ -94,7 +94,7 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 3. Data connector abstraction: `data_sources`, `ingestion_runs`, freshness monitor; CSV là 1 connector.
 4. ✅ Product Fact Sheet + evidence (`013_content_studio.sql`).
 5. ✅ Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow + version diff + rollback + `content_impact`.
-6. VoC ticket → task (5 loại) và ASIN Control Room gộp view.
+6. ✅ VoC ticket → task (5 loại + content_opportunity) và ASIN Control Room (`014_tasks_control_room.sql`).
 7. KPI content/AI quality vào scorecard.
 
 ### P1 (trong pilot 90 ngày)
