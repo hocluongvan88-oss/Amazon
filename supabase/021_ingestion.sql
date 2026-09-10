@@ -178,7 +178,7 @@ BEGIN
         WHEN 'date' THEN
           d := public.ingest_parse_date(rawv);
           IF d IS NULL THEN errs := array_append(errs, k || ': ngày không hợp lệ (' || left(rawv, 25) || ')');
-          ELSIF d > CURRENT_DATE + 1 THEN errs := array_append(errs, k || ': ngày trong tương lai');
+          ELSIF d > CURRENT_DATE + 1 AND p_kind <> 'promotions' THEN errs := array_append(errs, k || ': ngày trong tương lai');
           ELSE outv := to_jsonb(d); END IF;
         WHEN 'bool' THEN outv := to_jsonb(lower(rawv) IN ('true','yes','y','1','x'));
         WHEN 'list' THEN outv := to_jsonb((SELECT array_agg(upper(trim(x))) FROM unnest(regexp_split_to_array(rawv, '[,;|\s]+')) x WHERE trim(x) <> ''));
