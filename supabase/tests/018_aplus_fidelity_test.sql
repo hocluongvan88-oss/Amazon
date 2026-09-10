@@ -83,7 +83,7 @@ BEGIN
   -- giới hạn từng trường
   gate := public.check_content_compliance(t, sk1, 'aplus', jsonb_build_object('modules', jsonb_build_array(m5 || jsonb_build_object('headline', repeat('x',161)))), '[]'::jsonb);
   INSERT INTO _t SELECT 'gate: headline 161 > 160 blocks', (gate->'issues') @> '[{"code":"aplus_len"}]';
-  gate := public.check_content_compliance(t, sk1, 'aplus', '{"modules":[{"type":"standard_single_image_sidebar","image":{"brief":"x","url":""},"alt":"a","headline":"h","body":"' || repeat('b',501) || '"}]}', '[]'::jsonb);
+  gate := public.check_content_compliance(t, sk1, 'aplus', ('{"modules":[{"type":"standard_single_image_sidebar","image":{"brief":"x","url":""},"alt":"a","headline":"h","body":"' || repeat('b',501) || '"}]}')::jsonb, '[]'::jsonb);
   INSERT INTO _t SELECT 'gate: sidebar body 501 > 500 blocks', (gate->'issues') @> '[{"code":"aplus_len"}]';
   gate := public.check_content_compliance(t, sk1, 'aplus', jsonb_build_object('modules', jsonb_build_array(m5 || '{"alt":""}'::jsonb)), '[]'::jsonb);
   INSERT INTO _t SELECT 'gate: missing alt → required block + alt warn', (gate->'issues') @> '[{"code":"aplus_alt","severity":"warn"}]' AND (gate->'issues') @> '[{"code":"aplus_required"}]';
