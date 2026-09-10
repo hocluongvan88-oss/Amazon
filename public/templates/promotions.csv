@@ -1,0 +1,3 @@
+promo_id,type,name,asins,start_date,end_date,discount_type,discount_value,budget,status,note
+CPN-2026-09-A,coupon,10% off yoga mat,B08N5RRNJC,2026-09-05,2026-09-19,percent,10,300,running,Biên sau coupon ~28%
+LD-2026-09-B,lightning_deal,Prime Day block deal,B07XJ8C8F5;B08N5RRNJC,2026-09-12,2026-09-12,percent,20,,scheduled,

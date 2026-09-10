@@ -1,4 +1,4 @@
-purchase-date,order-status,asin,quantity,item-price
-2026-09-01T10:15:00+00:00,Shipped,B08N5RRNJC,2,49.98
-2026-09-01T12:40:00+00:00,Cancelled,B08N5RRNJC,1,24.99
-2026-09-02T09:05:00+00:00,Shipped,B07XJ8C8F5,1,19.95
+amazon-order-id,purchase-date,order-status,fulfillment-channel,asin,sku,quantity,item-price,currency
+111-1234567-0000001,2026-09-01T10:15:00+00:00,Shipped,AFN,B08N5RRNJC,VX-MAT-01,2,49.98,USD
+111-1234567-0000002,2026-09-01T12:40:00+00:00,Cancelled,AFN,B08N5RRNJC,VX-MAT-01,1,24.99,USD
+111-1234567-0000003,2026-09-02T08:05:00+00:00,Shipped,AFN,B07XJ8C8F5,VX-BLK-02,1,32.50,USD

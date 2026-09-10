@@ -1,0 +1,4 @@
+snapshot-date,sku,asin,fulfillment-center-id,afn-fulfillable-quantity,afn-reserved-quantity,afn-inbound-shipped-quantity,afn-unsellable-quantity,inv-age-91-to-180-days,inv-age-181-to-270-days,inv-age-271-to-365-days,inv-age-365-plus-days
+2026-09-09,VX-MAT-01,B08N5RRNJC,PHX7,140,6,200,2,20,0,0,0
+2026-09-09,VX-MAT-01,B08N5RRNJC,ONT8,85,3,0,0,10,0,0,0
+2026-09-09,VX-BLK-02,B07XJ8C8F5,PHX7,42,1,0,1,0,0,0,0

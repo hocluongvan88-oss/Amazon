@@ -1,0 +1,3 @@
+return-date,order-id,sku,asin,quantity,detailed-disposition,reason,status,license-plate-number,customer-comments,refund amount
+2026-09-03T14:20:00+00:00,111-1234567-0000001,VX-MAT-01,B08N5RRNJC,1,CUSTOMER_DAMAGED,NOT_AS_DESCRIBED,Unit returned to inventory,LPN123456,Mỏng hơn mô tả,24.99
+2026-09-04T09:00:00+00:00,111-9876543-0000009,VX-BLK-02,B07XJ8C8F5,1,SELLABLE,UNWANTED_ITEM,Unit returned to inventory,LPN123457,,32.50

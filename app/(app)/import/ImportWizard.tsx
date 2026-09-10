@@ -6,12 +6,27 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { parseCsv, toNumber } from '@/lib/import/csv';
-import { SCHEMAS, autoMap, type ImportKind, type ImportSchema, type FieldDef } from '@/lib/import/schemas';
+import { SCHEMAS, SERVER_KINDS, autoMap, type ImportKind, type ImportSchema, type FieldDef } from '@/lib/import/schemas';
 import { Card, CardHeader, Badge, Spinner, ErrorBox, btn, input } from '@/components/ui';
 
 type Parsed = { headers: string[]; rows: string[][]; filename: string };
 type RowResult = { row: number; asin: string; message: string };
 type Job = { id: string; kind: ImportKind; filename: string | null; rows_total: number; rows_ok: number; rows_failed: number; created_at: string; errors: RowResult[] | null };
+type Batch = { id: string; import_kind: ImportKind; filename: string | null; status: string; rows_total: number; rows_valid: number; rows_invalid: number; rows_inserted: number; rows_updated: number; rows_skipped: number; rows_error: number; created_at: string; committed_at: string | null };
+type DryRun = {
+  batch_id: string; feed_key: string; schema_version: number; rows_total: number; rows_valid: number; rows_invalid: number;
+  date_min: string | null; date_max: string | null; distinct_asins: number; unknown_asins: string[]; unknown_asin_count: number;
+  duplicate_rows_in_file: number; existing_days_in_range: number; errors: { row: number; error: string }[]; can_commit: boolean;
+};
+type CommitResult = {
+  ok: boolean; status: string; run_id: string; rows_inserted: number; rows_updated: number; rows_skipped: number; rows_error: number; rows_invalid: number;
+  window_start: string | null; window_end: string | null; errors: { row: number; error: string }[];
+};
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export default function ImportWizard() {
   const { tenant, can } = useTenant();
@@ -22,12 +37,23 @@ export default function ImportWizard() {
   const [running, setRunning] = React.useState(false);
   const [result, setResult] = React.useState<{ ok: number; failed: number; errors: RowResult[] } | null>(null);
   const [jobs, setJobs] = React.useState<Job[]>([]);
+  const [batches, setBatches] = React.useState<Batch[]>([]);
+  const [rawText, setRawText] = React.useState<string>('');
+  const [dry, setDry] = React.useState<DryRun | null>(null);
+  const [commit, setCommit] = React.useState<CommitResult | null>(null);
+  const [srvError, setSrvError] = React.useState<string | null>(null);
+  const [progress, setProgress] = React.useState<string>('');
   const schema = SCHEMAS[kind];
+  const serverSide = SERVER_KINDS.has(kind);
 
   const loadJobs = React.useCallback(async () => {
     if (!tenant) return;
-    const { data } = await supabase.from('import_jobs').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10);
+    const [{ data }, { data: b }] = await Promise.all([
+      supabase.from('import_jobs').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10),
+      supabase.from('ingest_batches').select('id, import_kind, filename, status, rows_total, rows_valid, rows_invalid, rows_inserted, rows_updated, rows_skipped, rows_error, created_at, committed_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10),
+    ]);
     setJobs((data ?? []) as Job[]);
+    setBatches((b ?? []) as Batch[]);
   }, [tenant]);
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tenant change
@@ -41,8 +67,9 @@ export default function ImportWizard() {
     f.text().then((text) => {
       const { headers, rows } = parseCsv(text);
       setParsed({ headers, rows, filename: f.name });
+      setRawText(text);
       setMap(autoMap(headers, schema) as Record<string, string>);
-      setResult(null);
+      setResult(null); setDry(null); setCommit(null); setSrvError(null);
     });
   }
 
@@ -61,7 +88,7 @@ export default function ImportWizard() {
           if (f.required) error ??= `Thiếu ${f.label}`;
           continue;
         }
-        if (f.type === 'text') data[f.key] = f.key === 'asin' ? raw.toUpperCase() : raw;
+        if (f.type === 'text' || f.type === 'list' || f.type === 'percent') data[f.key] = f.key === 'asin' ? raw.toUpperCase() : raw;
         else if (f.type === 'date') {
           const d = new Date(raw);
           if (isNaN(d.getTime())) error ??= `${f.label} không hợp lệ: "${raw}"`; else data[f.key] = d.toISOString().slice(0, 10);
@@ -82,7 +109,61 @@ export default function ImportWizard() {
   const invalidCount = (prepared?.length ?? 0) - validCount;
   const missingRequired = schema.fields.filter((f) => f.required && !map[f.key]);
 
-  // ---- import ----
+  // ---- Feed server-side (021): dòng thô → ingest_open/add_rows/dry_run/commit ----
+  const rawRows = React.useMemo(() => {
+    if (!parsed || !serverSide) return [];
+    const idx = (k: string) => parsed.headers.indexOf(map[k] ?? '');
+    return parsed.rows.map((r) => {
+      const o: Record<string, string> = {};
+      for (const f of schema.fields) { const ci = idx(f.key); const v = ci >= 0 ? r[ci] : undefined; if (v != null && v.trim() !== '') o[f.key] = v.trim(); }
+      return o;
+    });
+  }, [parsed, map, schema, serverSide]);
+
+  async function runDryRun() {
+    if (!tenant || !parsed) return;
+    setRunning(true); setSrvError(null); setCommit(null); setDry(null);
+    try {
+      setProgress('Mở phiên nhập…');
+      const fileHash = await sha256Hex(`${kind}\n${rawText}`);
+      const { data: opened, error: e1 } = await supabase.rpc('ingest_open', { p_tenant: tenant.id, p_kind: kind, p_filename: parsed.filename, p_file_hash: fileHash, p_column_map: map });
+      if (e1) throw new Error(e1.message);
+      const op = opened as { batch_id: string; duplicate: boolean; committed_at?: string; rows_inserted?: number; rows_updated?: number; rows_skipped?: number };
+      if (op.duplicate) {
+        setSrvError(`File này đã được ghi lúc ${op.committed_at ? new Date(op.committed_at).toLocaleString('vi-VN') : '?'} (${op.rows_inserted ?? 0} thêm · ${op.rows_updated ?? 0} cập nhật · ${op.rows_skipped ?? 0} trùng). Không ghi lại.`);
+        return;
+      }
+      const CHUNK = 1000;
+      for (let i = 0; i < rawRows.length; i += CHUNK) {
+        setProgress(`Kiểm tra dòng ${i + 1}–${Math.min(i + CHUNK, rawRows.length)} / ${rawRows.length}…`);
+        const { error: e2 } = await supabase.rpc('ingest_add_rows', { p_batch: op.batch_id, p_rows: rawRows.slice(i, i + CHUNK), p_offset: i + 1 });
+        if (e2) throw new Error(e2.message);
+      }
+      setProgress('Tổng hợp kết quả kiểm tra…');
+      const { data: d, error: e3 } = await supabase.rpc('ingest_dry_run', { p_batch: op.batch_id });
+      if (e3) throw new Error(e3.message);
+      setDry(d as DryRun);
+    } catch (err) {
+      setSrvError(err instanceof Error ? err.message : String(err));
+    } finally { setRunning(false); setProgress(''); }
+  }
+
+  async function runCommit() {
+    if (!dry) return;
+    setRunning(true); setSrvError(null);
+    try {
+      setProgress('Đang ghi vào hệ thống…');
+      const { data, error } = await supabase.rpc('ingest_commit', { p_batch: dry.batch_id });
+      if (error) throw new Error(error.message);
+      setCommit(data as CommitResult);
+      setDry(null);
+      loadJobs();
+    } catch (err) {
+      setSrvError(err instanceof Error ? err.message : String(err));
+    } finally { setRunning(false); setProgress(''); }
+  }
+
+  // ---- import (feed cũ, ghi trực tiếp — sẽ chuyển sang RPC ở bước sau) ----
   async function run() {
     if (!tenant || !prepared) return;
     setRunning(true);
@@ -94,55 +175,7 @@ export default function ImportWizard() {
     const existing = await fetchAll<{ id: string; asin: string }>((from, to) => supabase.from('amazon_skus').select('id, asin').eq('tenant_id', tenant.id).order('id').range(from, to));
     const byAsin = new Map(existing.map((s) => [s.asin as string, s.id as string]));
 
-    if (schema.daily) {
-      // ---- Gộp theo ngày + ASIN ----
-      type Agg = { units: number; revenue: number; ad_spend: number; ad_sales: number; ad_clicks: number; ad_impressions: number };
-      const agg = new Map<string, Agg>();
-      const days = new Set<string>();
-      let skipped = 0;
-      for (const p of valid) {
-        const st = String(p.data.order_status ?? '').toLowerCase();
-        if (kind === 'orders' && (st.includes('cancel') || st.includes('huỷ') || st.includes('huy'))) { skipped++; continue; }
-        const asin = String(p.data.asin);
-        const date = String(p.data.date);
-        if (!byAsin.has(asin)) { errors.push({ row: p.row, asin, message: 'ASIN chưa có trong danh mục – bỏ qua' }); continue; }
-        days.add(date);
-        const key = `${asin}|${date}`;
-        const a = agg.get(key) ?? { units: 0, revenue: 0, ad_spend: 0, ad_sales: 0, ad_clicks: 0, ad_impressions: 0 };
-        if (kind === 'orders') { a.units += Number(p.data.quantity ?? 0); a.revenue += Number(p.data.item_price ?? 0); }
-        else { a.ad_spend += Number(p.data.ad_spend ?? 0); a.ad_sales += Number(p.data.ad_sales ?? 0); a.ad_clicks += Number(p.data.ad_clicks ?? 0); a.ad_impressions += Number(p.data.ad_impressions ?? 0); }
-        agg.set(key, a);
-      }
-      // Với đơn hàng: ASIN trong danh mục không có đơn ngày đó → 0 (để velocity đúng)
-      const rows: Record<string, unknown>[] = [];
-      const dayList = [...days].sort();
-      if (kind === 'orders') {
-        for (const [asin, id] of byAsin) for (const date of dayList) {
-          const a = agg.get(`${asin}|${date}`);
-          rows.push({ sku_id: id, date, tenant_id: tenant.id, asin, units: a?.units ?? 0, revenue: a ? Math.round(a.revenue * 100) / 100 : 0, sources: { orders: 'csv' } });
-        }
-      } else {
-        for (const [key, a] of agg) {
-          const [asin, date] = key.split('|');
-          rows.push({ sku_id: byAsin.get(asin), date, tenant_id: tenant.id, asin, ad_spend: Math.round(a.ad_spend * 100) / 100, ad_sales: Math.round(a.ad_sales * 100) / 100, ad_clicks: a.ad_clicks, ad_impressions: a.ad_impressions, sources: { ads: 'csv' } });
-        }
-      }
-      for (let i = 0; i < rows.length; i += 500) {
-        const chunk = rows.slice(i, i + 500);
-        const { error } = await supabase.from('sku_daily_snapshots').upsert(chunk, { onConflict: 'sku_id,date' });
-        if (error) { errors.push({ row: 0, asin: '', message: error.message }); break; }
-        ok += chunk.length;
-      }
-      if (kind === 'orders') await supabase.rpc('refresh_sku_rolling_from_snapshots', { t: tenant.id });
-      await supabase.from('import_jobs').insert({
-        tenant_id: tenant.id, kind, filename: parsed?.filename, rows_total: prepared.length, rows_ok: ok, rows_failed: errors.length,
-        errors: errors.slice(0, 200), column_map: { ...map, _days: dayList.length, _skipped_cancelled: skipped },
-      });
-      setResult({ ok, failed: errors.length, errors });
-      setRunning(false);
-      loadJobs();
-      return;
-    }
+    if (serverSide) { setRunning(false); return; }
 
     const CHUNK = 200;
     for (let i = 0; i < valid.length; i += CHUNK) {
@@ -205,17 +238,26 @@ export default function ImportWizard() {
         {/* Step 1 */}
         <Card>
           <CardHeader title="1. Chọn loại dữ liệu" />
-          <div className="p-5 grid sm:grid-cols-2 gap-2">
-            {(Object.values(SCHEMAS) as ImportSchema[]).map((s) => {
-              const needCogs = s.kind === 'cogs' && !can('cogs.write');
-              return (
-              <button key={s.kind} disabled={needCogs} title={needCogs ? 'Chỉ Finance/Owner (cogs.write) được nhập giá vốn' : ''} onClick={() => { setKind(s.kind); setParsed(null); setResult(null); }}
-                className={`text-left p-3 rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${kind === s.kind ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <p className="font-medium text-gray-900">{s.title}{needCogs && <span className="ml-2 text-xs font-normal text-gray-500">🔒 Finance</span>}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
-              </button>
-              );
-            })}
+          <div className="p-5 space-y-4">
+            {([['daily', 'Vận hành theo ngày'], ['ads', 'Quảng cáo'], ['catalog', 'Danh mục & tham số SKU'], ['other', 'Khác']] as const).map(([g, label]) => (
+              <div key={g}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">{label}</p>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {(Object.values(SCHEMAS) as ImportSchema[]).filter((s) => s.group === g).map((s) => {
+                    const needCogs = s.kind === 'cogs' && !can('cogs.write');
+                    return (
+                      <button key={s.kind} disabled={needCogs} title={needCogs ? 'Chỉ Finance/Owner (cogs.write) được nhập giá vốn' : ''} onClick={() => { setKind(s.kind); setParsed(null); setResult(null); setDry(null); setCommit(null); setSrvError(null); }}
+                        className={`text-left p-3 rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${kind === s.kind ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <p className="font-medium text-gray-900">{s.title}{needCogs && <span className="ml-2 text-xs font-normal text-gray-500">🔒 Finance</span>}
+                          {SERVER_KINDS.has(s.kind) && <span className="ml-2 text-[10px] font-medium text-emerald-700 bg-emerald-50 ring-1 ring-emerald-600/20 rounded px-1.5 py-0.5 align-middle">kiểm tra trước khi ghi</span>}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
           <div className="px-5 pb-5 text-sm text-gray-600">
             <p><b>Nguồn:</b> {schema.source}</p>
@@ -256,17 +298,76 @@ export default function ImportWizard() {
             {parsed && (
               <>
                 <div className="grid sm:grid-cols-2 gap-3">
-                  {schema.fields.map((f) => <MapRow key={f.key} f={f} headers={parsed.headers} value={map[f.key] ?? ''} onChange={(v) => setMap({ ...map, [f.key]: v })} />)}
+                  {schema.fields.map((f) => <MapRow key={f.key} f={f} headers={parsed.headers} value={map[f.key] ?? ''} onChange={(v) => { setMap({ ...map, [f.key]: v }); setDry(null); setCommit(null); }} />)}
                 </div>
                 {missingRequired.length > 0 && <ErrorBox message={`Chưa khớp cột bắt buộc: ${missingRequired.map((f) => f.label).join(', ')}`} />}
                 <Preview prepared={prepared!} schema={schema} />
+                {serverSide && <p className="text-[11px] text-gray-500">Bảng trên chỉ xem trước khớp cột. Kiểm tra chính thức (định dạng, ngày, ASIN, trùng lặp) do máy chủ thực hiện ở bước 3.</p>}
               </>
             )}
           </div>
         </Card>
 
-        {/* Step 3 */}
-        {parsed && (
+        {/* Step 3 — server-side: dry-run → commit */}
+        {parsed && serverSide && (
+          <Card>
+            <CardHeader title="3. Kiểm tra rồi ghi" subtitle="Máy chủ kiểm tra từng dòng theo hợp đồng dữ liệu (cùng chuẩn với API). Bước kiểm tra KHÔNG ghi gì; bạn xem kết quả rồi mới ghi." />
+            <div className="p-5 space-y-4 text-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <button className={btn.secondary} disabled={running || missingRequired.length > 0 || rawRows.length === 0} onClick={runDryRun}>
+                  {running && !dry ? (progress || 'Đang kiểm tra…') : `Kiểm tra ${rawRows.length} dòng (không ghi)`}
+                </button>
+                {dry && (
+                  <button className={btn.primary} disabled={running || !dry.can_commit} onClick={runCommit}>
+                    {running ? (progress || 'Đang ghi…') : `Ghi ${dry.rows_valid} dòng hợp lệ`}
+                  </button>
+                )}
+              </div>
+              {srvError && <ErrorBox message={srvError} />}
+              {dry && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
+                  <p className="font-medium text-gray-900">Kết quả kiểm tra · feed <span className="font-mono">{dry.feed_key}</span> · schema v{dry.schema_version}</p>
+                  <div className="grid sm:grid-cols-3 gap-2 text-xs">
+                    <Stat label="Hợp lệ" value={dry.rows_valid} tone="ok" />
+                    <Stat label="Lỗi (sẽ bỏ qua)" value={dry.rows_invalid} tone={dry.rows_invalid ? 'bad' : 'muted'} />
+                    <Stat label="ASIN khác nhau" value={dry.distinct_asins} />
+                    <Stat label="Khoảng ngày" value={dry.date_min ? `${dry.date_min} → ${dry.date_max}` : '—'} />
+                    <Stat label="Ngày đã có dữ liệu" value={dry.existing_days_in_range} tone={dry.existing_days_in_range ? 'warn' : 'muted'} hint={dry.existing_days_in_range ? 'Dòng trùng khoá sẽ được cập nhật (restatement); dòng giống hệt bị bỏ qua.' : undefined} />
+                    <Stat label="Dòng trùng trong file" value={dry.duplicate_rows_in_file} tone={dry.duplicate_rows_in_file ? 'warn' : 'muted'} />
+                  </div>
+                  {dry.unknown_asin_count > 0 && (
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      {dry.unknown_asin_count} ASIN chưa có trong Danh mục: <span className="font-mono">{dry.unknown_asins.slice(0, 8).join(', ')}{dry.unknown_asin_count > 8 ? '…' : ''}</span>. Dữ liệu vẫn được lưu vào bảng chuẩn nhưng sẽ không lên dashboard cho tới khi nhập Danh mục.
+                    </p>
+                  )}
+                  {dry.errors.length > 0 && (
+                    <ul className="max-h-48 overflow-auto text-xs text-red-700 space-y-0.5">
+                      {dry.errors.slice(0, 100).map((e, i) => <li key={i}>Dòng {e.row + 1}: {e.error}</li>)}
+                    </ul>
+                  )}
+                  {!dry.can_commit && <p className="text-xs text-red-700">Không có dòng hợp lệ — sửa file hoặc khớp lại cột.</p>}
+                </div>
+              )}
+              {commit && (
+                <div className={`rounded-lg border p-4 ${commit.ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50'}`}>
+                  <p className="font-medium text-gray-900">
+                    {commit.status === 'succeeded' ? 'Đã ghi thành công' : commit.status === 'partial' ? 'Đã ghi một phần' : 'Ghi thất bại'} · {commit.rows_inserted} thêm · {commit.rows_updated} cập nhật · {commit.rows_skipped} trùng (bỏ qua) · {commit.rows_error + commit.rows_invalid} lỗi
+                  </p>
+                  {commit.window_start && <p className="text-xs text-gray-600 mt-1">Khoảng ngày {commit.window_start} → {commit.window_end} · run <span className="font-mono">{commit.run_id.slice(0, 8)}</span></p>}
+                  {commit.errors.length > 0 && (
+                    <ul className="mt-2 max-h-40 overflow-auto text-xs text-red-700 space-y-0.5">
+                      {commit.errors.slice(0, 50).map((e, i) => <li key={i}>Dòng {e.row + 1}: {e.error}</li>)}
+                    </ul>
+                  )}
+                  <p className="mt-2 text-xs"><Link href="/" className="text-indigo-600 hover:underline">Xem Tổng quan →</Link> · <Link href="/settings/data-sources" className="text-indigo-600 hover:underline">Độ tươi dữ liệu →</Link></p>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Step 3 — feed cũ */}
+        {parsed && !serverSide && (
           <Card>
             <CardHeader title="3. Nhập" />
             <div className="p-5 flex flex-wrap items-center gap-4">
@@ -295,8 +396,28 @@ export default function ImportWizard() {
 
       {/* History */}
       <Card className="self-start">
-        <CardHeader title="Lịch sử nhập" subtitle="10 lần gần nhất" />
-        {jobs.length === 0 ? <p className="p-5 text-sm text-gray-500">Chưa có lần nhập nào.</p> : (
+        <CardHeader title="Lịch sử nhập" subtitle="10 lần gần nhất mỗi loại" />
+        {batches.length > 0 && (
+          <ul className="divide-y divide-gray-100 border-b border-gray-100">
+            {batches.map((b) => (
+              <li key={b.id} className="px-5 py-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-gray-900">{SCHEMAS[b.import_kind]?.title ?? b.import_kind}</span>
+                  <span className="text-xs text-gray-400">{new Date(b.created_at).toLocaleString('vi-VN')}</span>
+                </div>
+                <p className="text-xs text-gray-500 truncate">{b.filename}</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge className={b.status === 'committed' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : b.status === 'failed' ? 'bg-red-50 text-red-700 ring-red-600/20' : 'bg-gray-100 text-gray-600 ring-gray-500/20'}>
+                    {b.status === 'committed' ? 'đã ghi' : b.status === 'failed' ? 'thất bại' : b.status === 'validated' ? 'đã kiểm tra, chưa ghi' : 'đang mở'}
+                  </Badge>
+                  {b.status === 'committed' && <Badge className="bg-gray-50 text-gray-600 ring-gray-500/20">{b.rows_inserted}+ · {b.rows_updated}↻ · {b.rows_skipped}=</Badge>}
+                  {(b.rows_invalid + b.rows_error) > 0 && <Badge className="bg-red-50 text-red-700 ring-red-600/20">{b.rows_invalid + b.rows_error} lỗi</Badge>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {jobs.length === 0 && batches.length === 0 ? <p className="p-5 text-sm text-gray-500">Chưa có lần nhập nào.</p> : (
           <ul className="divide-y divide-gray-100">
             {jobs.map((j) => (
               <li key={j.id} className="px-5 py-3 text-sm">
@@ -314,6 +435,16 @@ export default function ImportWizard() {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone, hint }: { label: string; value: number | string; tone?: 'ok' | 'bad' | 'warn' | 'muted'; hint?: string }) {
+  const color = tone === 'ok' ? 'text-emerald-700' : tone === 'bad' ? 'text-red-700' : tone === 'warn' ? 'text-amber-700' : tone === 'muted' ? 'text-gray-400' : 'text-gray-900';
+  return (
+    <div className="rounded border border-gray-200 bg-white px-2.5 py-1.5" title={hint}>
+      <p className="text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`font-semibold ${color}`}>{value}</p>
     </div>
   );
 }

@@ -1,3 +1,4 @@
-Date,Advertised ASIN,Impressions,Clicks,Spend,7 Day Total Sales
-2026-09-01,B08N5RRNJC,4210,58,31.20,224.91
-2026-09-02,B08N5RRNJC,3980,49,27.75,174.93
+Date,Campaign Name,Ad Group Name,Advertised ASIN,Impressions,Clicks,Spend,7 Day Total Orders (#),7 Day Total Sales
+2026-09-01,SP-Auto-Mat,AG-Auto,B08N5RRNJC,4210,58,31.20,9,224.91
+2026-09-02,SP-Auto-Mat,AG-Auto,B08N5RRNJC,3980,49,27.75,7,174.93
+2026-09-02,SP-Exact-Block,AG-Exact,B07XJ8C8F5,1200,15,9.80,2,65.00
