@@ -40,8 +40,12 @@ BEGIN
   PERFORM pg_temp.expect_error('fact: verify requires source_ref', format('UPDATE public.product_facts SET status=''verified'' WHERE id=%L', u));
 
   -- 2. Compliance gate
-  c := public.check_content_compliance(t, sku, 'title', '{"text":"BEST SELLER Water Bottle 750 ml"}'::jsonb, '[]'::jsonb);
-  INSERT INTO _t SELECT 'gate: banned term + caps blocked', NOT (c->>'ok')::boolean AND (c->>'blocks')::int >= 2;
+  c := public.check_content_compliance(t, sku, 'title', '{"text":"Best Seller Water Bottle"}'::jsonb, '[]'::jsonb);
+  INSERT INTO _t SELECT 'gate: banned term blocked', NOT (c->>'ok')::boolean AND c->'issues' @> '[{"code":"banned_term"}]';
+  c := public.check_content_compliance(t, sku, 'title', '{"text":"TRITAN WATER BOTTLE WITH LID"}'::jsonb, '[]'::jsonb);
+  INSERT INTO _t SELECT 'gate: all-caps title blocked', NOT (c->>'ok')::boolean AND c->'issues' @> '[{"code":"title_caps"}]';
+  c := public.check_content_compliance(t, sku, 'title', '{"text":"Water Bottle! Buy now?"}'::jsonb, '[]'::jsonb);
+  INSERT INTO _t SELECT 'gate: forbidden chars blocked', c->'issues' @> '[{"code":"title_chars"}]';
   c := public.check_content_compliance(t, sku, 'title', '{"text":"Tritan Water Bottle 750 ml, Leak-proof Lid"}'::jsonb, jsonb_build_array(jsonb_build_object('text','750 ml','fact_id', fact)));
   INSERT INTO _t SELECT 'gate: clean title with claim→fact passes', (c->>'ok')::boolean;
   c := public.check_content_compliance(t, sku, 'title', '{"text":"Water Bottle 750 ml"}'::jsonb, jsonb_build_array(jsonb_build_object('text','750 ml','fact_id', NULL)));
