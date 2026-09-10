@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import ExecutePanel, { type AutomationPolicy } from '@/components/ExecutePanel';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { usd, REC_TYPE_LABEL, REC_STATUS } from '@/lib/format';
@@ -46,10 +47,12 @@ export default function RecommendationsList() {
     setLoading(false);
   }, [tenant]);
 
+  const [policy, setPolicy] = React.useState<AutomationPolicy | null>(null);
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tenant change
     void load();
-  }, [load]);
+    if (tenant) supabase.from('policy_register').select('automation_live,canary_asins,rollback_watch_hours,max_live_actions_per_day,rollback_units_drop_pct').eq('tenant_id', tenant.id).maybeSingle().then(({ data }) => setPolicy((data as AutomationPolicy) ?? null));
+  }, [load, tenant]);
 
   async function transition(id: string, next: string, reason?: string) {
     setBusy(id);
@@ -146,7 +149,7 @@ export default function RecommendationsList() {
                       <button className={btn.danger} disabled={isBusy || !allowed} onClick={() => setReasonFor({ id: r.id, kind: 'rejected' })}>Từ chối…</button>
                     </>)}
                     {r.status === 'approved' && (<>
-                      <button className={btn.success} disabled={isBusy || !allowed} onClick={() => transition(r.id, 'executed')}>Đánh dấu đã thực thi</button>
+                      <button className={btn.secondary} disabled={isBusy || !allowed} onClick={() => transition(r.id, 'executed')} title="Đã tự làm tay trên Seller Central">Đánh dấu đã làm tay</button>
                       <button className={btn.secondary} disabled={isBusy || !allowed} onClick={() => setReasonFor({ id: r.id, kind: 'rejected' })}>Huỷ duyệt…</button>
                     </>)}
                     {r.status === 'executed' && <button className={btn.secondary} disabled={isBusy || !allowed} onClick={() => setReasonFor({ id: r.id, kind: 'rolled_back' })}>Hoàn tác…</button>}
@@ -155,6 +158,9 @@ export default function RecommendationsList() {
                       <span className="text-xs text-gray-500">🔒 {lockMsg}</span>
                     )}
                   </div>
+                )}
+                {canWrite && ['approved', 'executed', 'rolled_back'].includes(r.status) && (r.type === 'price_adjust' || r.type === 'replenish') && (
+                  <ExecutePanel recId={r.id} asin={r.asin} status={r.status} canExecute={allowed} policy={policy} onChanged={load} />
                 )}
               </Card>
             );

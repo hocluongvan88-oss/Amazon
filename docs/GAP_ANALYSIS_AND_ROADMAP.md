@@ -100,11 +100,12 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] **Gate check**: tab QA – rút mẫu ngẫu nhiên, precision phân loại theo chủ đề; trigger DB chặn duyệt/gửi nếu có từ ngữ bị cấm (0 prohibited wording).
 - [ ] Nâng cấp phân loại bằng LLM khi có ngân sách API (giữ nguyên schema, `method='llm'`).
 
-### Tuần 11 – Bounded automation
-- [ ] Bảng `actions(recommendation_id, idempotency_key, mode: dry_run|canary|live, payload, response, status)`, `rollbacks`.
-- [ ] Adapter SP‑API write (Listings Items API đổi giá) với: dry‑run mặc định, canary theo danh sách ASIN nhỏ, rate limit, retry idempotent, rollback tự động về giá cũ khi metric xấu trong N giờ.
-- [ ] UI: nút "Chạy thử (dry‑run)" hiển thị payload; "Thực thi" chỉ enable sau dry‑run OK + đúng role; lịch sử action & rollback.
-- [ ] **Gate check**: 0 policy incident, 0 uncontrolled write (đếm từ `actions` không có `recommendation_id` đã approved).
+### Tuần 11 – Bounded automation ✅ (010)
+- [x] Bảng `actions(recommendation_id, idempotency_key, mode: dry_run|canary|live, payload, response, status, watch_until, baseline)` + `rollbacks(trigger: manual|auto_metric|auto_error)`. Trigger chặn ghi trực tiếp – chỉ qua `execute_recommendation()` / `rollback_action()`.
+- [x] Connector `internal` mô phỏng SP‑API Listings Items PATCH (dry‑run trả đúng request body sẽ gửi); dry‑run mặc định, canary theo `canary_asins`, live cần `automation_live`, rate limit `max_live_actions_per_day`, retry idempotent, kiểm tra trần % giá và biên tối thiểu trước khi ghi. Auto‑rollback khi units/ngày giảm ≥ X% trong cửa sổ theo dõi (cron 03:30) + ngoại lệ `AUTO_ROLLBACK`.
+- [x] UI: panel trong Gợi ý (Chạy thử → payload; Canary/Live chỉ enable sau dry‑run OK + ASIN canary + đúng role), trang **Lệnh thực thi** `/actions` (nhật ký, hoàn tác có lý do, đang theo dõi), Chính sách (công tắc live, canary ASIN, cửa sổ, ngưỡng, giới hạn/ngày).
+- [x] **Gate check**: `v_automation_stats.uncontrolled_writes` (ghi thật không gắn gợi ý đã duyệt) hiển thị đầu trang – phải = 0.
+- [ ] Adapter SP‑API thật (Edge Function nhận action `queued`, LWA token, rate limit theo Amazon) – khi có credentials; schema không đổi.
 
 ### Tuần 12‑14 – Đo lường & quyết định
 - [ ] Bảng `experiments`/đánh dấu trước‑sau cho từng action; tính incremental CP với khoảng tin cậy (so với cohort ASIN không tác động).

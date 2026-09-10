@@ -13,6 +13,7 @@ type Policy = {
   risk_weights: { margin_delta: number; inventory_health: number; velocity: number; volatility: number };
   default_lead_time_days: number; safety_stock_days: number;
   data_readiness_target_pct: number; revenue_tolerance_pct: number;
+  automation_live: boolean | null; canary_asins: string[] | null; rollback_watch_hours: number | null; rollback_units_drop_pct: number | null; max_live_actions_per_day: number | null;
   sla_hours: Record<'P0' | 'P1' | 'P2' | 'P3', number> | null; cooldown_days: number | null; rule_toggles: Record<string, boolean> | null;
   updated_at: string;
 };
@@ -132,6 +133,20 @@ export default function PolicyForm() {
               <span>{label}<span className="block text-[10px] font-mono text-gray-400">{code}</span></span>
             </label>
           ))}
+        </div>
+      </Card>
+
+      <Card className="border-red-200">
+        <CardHeader title="Tự động hoá có giới hạn (Tuần 11)" subtitle="Mặc định chỉ chạy thử. Canary chỉ áp dụng cho ASIN trong danh sách. Live cần bật công tắc và vẫn bị giới hạn số lệnh/ngày + tự hoàn tác." />
+        <div className="p-5 grid sm:grid-cols-4 gap-4">
+          <label className="flex items-center gap-2 text-sm sm:col-span-4"><input type="checkbox" className="rounded" disabled={ro} checked={!!p.automation_live} onChange={(e) => setP({ ...p, automation_live: e.target.checked })} /><span><b>Bật chế độ live</b> – lệnh ghi thật ngoài canary (chỉ owner nên bật khi đã qua pilot canary)</span></label>
+          <div className="sm:col-span-4">
+            <label className="block text-xs font-medium text-gray-700 mb-1">ASIN canary (phân cách bằng dấu phẩy)</label>
+            <input value={(p.canary_asins ?? []).join(', ')} disabled={ro} onChange={(e) => setP({ ...p, canary_asins: e.target.value.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter(Boolean) })} className={`${input} font-mono disabled:bg-gray-50`} placeholder="B08N5RRNJC, B07XJ8C8F5" />
+          </div>
+          <F label="Cửa sổ theo dõi" v={p.rollback_watch_hours ?? 48} on={set('rollback_watch_hours')} ro={ro} unit="giờ" step={1} />
+          <F label="Tự hoàn tác khi units giảm" v={p.rollback_units_drop_pct ?? 35} on={set('rollback_units_drop_pct')} ro={ro} unit="%" step={1} />
+          <F label="Tối đa lệnh thật / ngày" v={p.max_live_actions_per_day ?? 5} on={set('max_live_actions_per_day')} ro={ro} unit="lệnh" step={1} />
         </div>
       </Card>
 

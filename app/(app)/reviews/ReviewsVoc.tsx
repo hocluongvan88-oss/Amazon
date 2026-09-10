@@ -18,7 +18,7 @@ type Cls = { id: string; review_id: string; topic_code: string; severity: number
 type Prec = { topic_code: string; total: number; verified: number; correct: number; precision_pct: number | null };
 type Member = { user_id: string; role: string };
 
-const TYPE_LABEL: Record<string, string> = { defect: 'Lỗi sản phẩm', content: 'Nội dung listing', logistics: 'Vận chuyển/đóng gói', service: 'Dịch vụ', positive: 'Khen', other: 'Khác' };
+const TYPE_LABEL: Record<string, string> = { defect: 'Chất lượng sản phẩm', content: 'Nội dung listing (mô tả/ảnh)', logistics: 'Fulfillment & đóng gói', service: 'Dịch vụ khách hàng', positive: 'Điểm khách khen', other: 'Khác' };
 const TYPE_CLS: Record<string, string> = { defect: 'bg-red-50 text-red-700 ring-red-600/20', content: 'bg-amber-50 text-amber-800 ring-amber-600/20', logistics: 'bg-blue-50 text-blue-700 ring-blue-600/20', service: 'bg-purple-50 text-purple-700 ring-purple-600/20', positive: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', other: 'bg-gray-100 text-gray-600 ring-gray-500/20' };
 const TSTATUS: Record<string, { label: string; cls: string }> = { open: { label: 'Mở', cls: 'bg-red-50 text-red-700 ring-red-600/20' }, investigating: { label: 'Đang xử lý', cls: 'bg-amber-50 text-amber-800 ring-amber-600/20' }, resolved: { label: 'Đã xử lý', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' }, wont_fix: { label: 'Không xử lý', cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' } };
 const DSTATUS: Record<string, { label: string; cls: string }> = { draft: { label: 'Nháp', cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' }, pending_approval: { label: 'Chờ duyệt', cls: 'bg-amber-50 text-amber-800 ring-amber-600/20' }, approved: { label: 'Đã duyệt', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' }, rejected: { label: 'Từ chối', cls: 'bg-red-50 text-red-700 ring-red-600/20' }, sent: { label: 'Đã gửi', cls: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20' } };
@@ -86,11 +86,11 @@ export default function ReviewsVoc() {
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Kpi label={`Cần triage (≤ ${maxRating}★)`} v={needTriage.length} hint={`${low.length} review sao thấp · ${reviews.length} tổng`} tone={needTriage.length ? 'red' : 'default'} />
+        <Kpi label={`Đánh giá cần xử lý (≤ ${maxRating}★)`} v={needTriage.length} hint={`${low.length} đánh giá tiêu cực · ${reviews.length} tổng`} tone={needTriage.length ? 'red' : 'default'} />
         <Kpi label="Ticket VOC đang mở" v={openTickets.length} hint={`${openTickets.filter((t) => t.priority === 'P0' || t.priority === 'P1').length} ưu tiên cao`} tone={openTickets.length ? 'amber' : 'default'} />
-        <Kpi label="Nháp chờ duyệt" v={pendingDrafts.length} hint={`${drafts.filter((d) => d.status === 'sent').length} đã gửi`} />
+        <Kpi label="Phản hồi chờ duyệt" v={pendingDrafts.length} hint={`${drafts.filter((d) => d.status === 'sent').length} đã gửi`} />
         <Card className="p-4">
-          <p className="text-xs text-gray-500">Sao TB 30 ngày · QA phân loại</p>
+          <p className="text-xs text-gray-500">Rating TB 30 ngày · QA phân loại</p>
           <p className="text-2xl font-bold mt-1 text-gray-900">{avg30}★ <span className="text-base font-medium text-gray-500">· {qaTotal ? `${Math.round(100 * qaOk / qaTotal)}%` : '—'}</span></p>
           <p className="text-xs text-gray-500 mt-0.5">{last30.length} review · {qaTotal} mẫu đã QA</p>
           {canWrite && <button className={`${btn.ghost} px-0 mt-1`} disabled={busy} onClick={reclassify}>{busy ? 'Đang phân loại…' : 'Phân loại lại →'}</button>}
@@ -98,7 +98,7 @@ export default function ReviewsVoc() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3 text-sm">
-        {([['triage', `Triage (${needTriage.length})`], ['topics', 'Chủ đề theo ASIN'], ['tickets', `Ticket (${openTickets.length})`], ['drafts', `Phản hồi (${pendingDrafts.length})`], ['qa', 'QA phân loại']] as const).map(([k, l]) => (
+        {([['triage', `Đánh giá tiêu cực (${needTriage.length})`], ['topics', 'Chủ đề theo ASIN'], ['tickets', `Ticket (${openTickets.length})`], ['drafts', `Liên hệ khách hàng (${pendingDrafts.length})`], ['qa', 'QA phân loại']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg border ${tab === k ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{l}</button>
         ))}
       </div>
@@ -106,7 +106,7 @@ export default function ReviewsVoc() {
       {tab === 'triage' && (
         <div className={`grid gap-4 ${sel ? 'xl:grid-cols-3' : ''}`}>
           <Card className={sel ? 'xl:col-span-2' : ''}>
-            {low.length === 0 ? <EmptyState title="Không có review sao thấp" description="Nhập review qua trang Nhập dữ liệu (loại Review khách hàng)." /> : (
+            {low.length === 0 ? <EmptyState title="Không có đánh giá tiêu cực (1–3★)" description="Nhập đánh giá từ Brand Registry → Customer Reviews qua trang Nhập dữ liệu." /> : (
               <ul className="divide-y divide-gray-100">
                 {[...low].sort((a, b) => Number(a.has_ticket || !!a.draft_status) - Number(b.has_ticket || !!b.draft_status) || (b.severity ?? 0) - (a.severity ?? 0) || a.rating - b.rating).map((r) => (
                   <li key={r.id} className={`px-5 py-3 cursor-pointer hover:bg-gray-50 ${sel?.id === r.id ? 'bg-indigo-50/50' : ''}`} onClick={() => setSel(r)}>
@@ -115,7 +115,7 @@ export default function ReviewsVoc() {
                       {r.severity === 3 && <Badge className="bg-red-600 text-white ring-red-700">Nghiêm trọng</Badge>}
                       {(r.topics ?? []).map((t) => <Badge key={t} className={TYPE_CLS[topicMap[t]?.type ?? 'other']}>{topicMap[t]?.label ?? (t === 'UNCLASSIFIED' ? 'Chưa phân loại' : t)}</Badge>)}
                       {r.has_ticket && <Badge className="bg-indigo-50 text-indigo-700 ring-indigo-600/20">Có ticket</Badge>}
-                      {r.draft_status && <Badge className={DSTATUS[r.draft_status]?.cls ?? ''}>Phản hồi: {DSTATUS[r.draft_status]?.label}</Badge>}
+                      {r.draft_status && <Badge className={DSTATUS[r.draft_status]?.cls ?? ''}>Liên hệ KH: {DSTATUS[r.draft_status]?.label}</Badge>}
                       {r.verified_purchase && <span className="text-[10px] uppercase text-gray-400">verified</span>}
                     </div>
                     <p className="text-sm font-medium text-gray-900 mt-1">{r.title ?? '(không tiêu đề)'}</p>
@@ -197,7 +197,7 @@ function ReviewPanel({ review: r, topics, members, canWrite, userId, tenantId, o
       <div className="p-4 space-y-3 text-sm">
         <div className="rounded-lg bg-gray-50 p-3"><p className="font-medium text-gray-900">{r.title}</p><p className="text-gray-700 mt-1 whitespace-pre-wrap">{r.body}</p></div>
         <div>
-          <p className="text-xs font-medium text-gray-700 mb-1">Phân loại (giải thích được)</p>
+          <p className="text-xs font-medium text-gray-700 mb-1">Chủ đề phát hiện (theo từ khoá khớp)</p>
           <ul className="space-y-1">
             {cls.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -213,7 +213,7 @@ function ReviewPanel({ review: r, topics, members, canWrite, userId, tenantId, o
         {canWrite && mode === 'view' && (
           <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
             {!r.has_ticket && <button className={btn.primary} onClick={() => setMode('ticket')}>Mở ticket VOC</button>}
-            {!r.draft_status && <button className={btn.secondary} onClick={() => { setMode('draft'); suggest(); }}>Soạn phản hồi</button>}
+            {!r.draft_status && <button className={btn.secondary} onClick={() => { setMode('draft'); suggest(); }}>Soạn tin liên hệ khách hàng</button>}
           </div>
         )}
         {mode === 'ticket' && (
@@ -233,12 +233,12 @@ function ReviewPanel({ review: r, topics, members, canWrite, userId, tenantId, o
         )}
         {mode === 'draft' && (
           <div className="space-y-2 pt-2 border-t border-gray-100">
-            <p className="text-xs font-medium text-gray-700">Nháp phản hồi (tin nhắn người mua) – người khác duyệt trước khi gửi</p>
+            <p className="text-xs font-medium text-gray-700">Tin liên hệ khách hàng (Brand Registry → Customer Reviews → Contact Customer, chỉ áp dụng review 1–3★) – người khác duyệt trước khi gửi</p>
             <textarea value={body} onChange={(e) => { setBody(e.target.value); setCheck(null); }} onBlur={() => body && runCheck(body)} rows={6} className={input} placeholder="Đang tạo gợi ý theo mẫu…" />
-            <p className="text-[11px] text-gray-500">Cấm: xin đổi/gỡ đánh giá, nhắc “5 sao”, ưu đãi đổi review, liên hệ ngoài Amazon, link/số điện thoại/email. Hệ thống tự kiểm tra trước khi gửi duyệt.</p>
+            <p className="text-[11px] text-gray-500">Theo Điều khoản Cộng đồng Amazon: không đề nghị sửa/gỡ đánh giá, không nhắc “5 sao”, không tặng quà/hoàn tiền đổi lấy đánh giá, không dẫn khách ra ngoài Amazon (link/SĐT/email). Hệ thống tự kiểm tra trước khi gửi duyệt.</p>
             {check && (
               <div className={`rounded-lg px-3 py-2 text-xs ${check.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
-                {check.ok ? 'Đạt kiểm tra chính sách.' : `Vi phạm: ${check.violations.join(', ')}`}{check.warnings?.length ? ` · Lưu ý: ${check.warnings.join('; ')}` : ''}
+                {check.ok ? 'Đạt kiểm tra chính sách Amazon.' : `Vi phạm: ${check.violations.join(', ')}`}{check.warnings?.length ? ` · Lưu ý: ${check.warnings.join('; ')}` : ''}
               </div>
             )}
             {err && <ErrorBox message={err} />}
@@ -264,10 +264,19 @@ function TopicsTab({ summary }: { summary: Summary[] }) {
   const maxN = rows[0]?.[1].n ?? 1;
   const byAsin = new Map<string, Summary[]>();
   summary.filter((s) => Number(s[range]) > 0).forEach((s) => byAsin.set(s.asin, [...(byAsin.get(s.asin) ?? []), s]));
+  const positives = summary.filter((s) => s.type === 'positive' && Number(s[range]) > 0).sort((a, b) => Number(b[range]) - Number(a[range]));
   return (
     <div className="grid lg:grid-cols-2 gap-4">
+      <Card className="lg:col-span-2 border-emerald-200">
+        <CardHeader title="Điểm khách khen – dùng cho listing & quảng cáo" subtitle="Amazon đã bỏ bình luận công khai dưới đánh giá và không cho liên hệ người đánh giá 4–5★, nên giá trị của đánh giá tích cực nằm ở việc khai thác: đưa vào bullet points, A+ Content, ảnh, tiêu đề quảng cáo Sponsored Products." />
+        {positives.length === 0 ? <p className="p-5 text-sm text-gray-500">Chưa có đánh giá 4–5★ được phân loại trong kỳ.</p> : (
+          <div className="p-4 flex flex-wrap gap-2">
+            {positives.map((s) => <Badge key={s.asin + s.topic_code} className={TYPE_CLS.positive}>{s.asin} · {Number(s[range])} đánh giá · {Number(s.avg_rating).toFixed(1)}★</Badge>)}
+          </div>
+        )}
+      </Card>
       <Card>
-        <CardHeader title="Cụm chủ đề" action={<select value={range} onChange={(e) => setRange(e.target.value as typeof range)} className="text-sm border border-gray-200 rounded-lg px-2 py-1"><option value="reviews_30d">30 ngày</option><option value="reviews_90d">90 ngày</option><option value="reviews">Tất cả</option></select>} />
+        <CardHeader title="Chủ đề khách hàng nhắc đến" action={<select value={range} onChange={(e) => setRange(e.target.value as typeof range)} className="text-sm border border-gray-200 rounded-lg px-2 py-1"><option value="reviews_30d">30 ngày</option><option value="reviews_90d">90 ngày</option><option value="reviews">Tất cả</option></select>} />
         {rows.length === 0 ? <EmptyState title="Chưa có phân loại" /> : (
           <ul className="p-4 space-y-2">
             {rows.map(([code, c]) => (
@@ -280,7 +289,7 @@ function TopicsTab({ summary }: { summary: Summary[] }) {
         )}
       </Card>
       <Card>
-        <CardHeader title="Theo ASIN" subtitle="Chủ đề nổi bật của từng sản phẩm" />
+        <CardHeader title="Theo ASIN" subtitle="Chủ đề nổi bật của từng ASIN – ⚠ = có mức nghiêm trọng" />
         {byAsin.size === 0 ? <EmptyState title="Chưa có dữ liệu" /> : (
           <ul className="divide-y divide-gray-100">
             {[...byAsin.entries()].sort((a, b) => b[1].reduce((s, x) => s + Number(x[range]), 0) - a[1].reduce((s, x) => s + Number(x[range]), 0)).map(([asin, list]) => (
@@ -306,9 +315,9 @@ function TicketsTab({ tickets, members, canWrite, userId, onChanged }: { tickets
   const list = tickets.filter((t) => showClosed || t.status === 'open' || t.status === 'investigating');
   return (
     <Card>
-      <CardHeader title="Ticket VOC" subtitle="Lỗi sản phẩm → QC/NCC · Nội dung → listing · Vận chuyển → FBA/đóng gói" action={<label className="text-sm flex items-center gap-2"><input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="rounded" />Hiện đã đóng</label>} />
+      <CardHeader title="Ticket VOC" subtitle="Chất lượng → QC/nhà cung cấp · Nội dung → tối ưu listing (bullet, ảnh, A+) · Fulfillment → đóng gói/FBA prep · Dịch vụ → CS" action={<label className="text-sm flex items-center gap-2"><input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="rounded" />Hiện đã đóng</label>} />
       {err && <div className="p-4"><ErrorBox message={err} /></div>}
-      {list.length === 0 ? <EmptyState title="Không có ticket" description="Mở ticket từ tab Triage." /> : (
+      {list.length === 0 ? <EmptyState title="Không có ticket" description="Mở ticket từ tab Đánh giá tiêu cực." /> : (
         <ul className="divide-y divide-gray-100">
           {list.map((t) => (
             <li key={t.id} className="px-5 py-3 flex flex-wrap gap-3 items-start">
@@ -340,9 +349,9 @@ function DraftsTab({ drafts, reviews, canWrite, userId, membersCount, onChanged 
   async function patch(id: string, p: Record<string, unknown>) { setErr(null); const { error } = await supabase.from('response_drafts').update(p).eq('id', id); if (error) setErr(error.message); else onChanged(); }
   return (
     <Card>
-      <CardHeader title="Nháp phản hồi" subtitle="Mọi phản hồi đều qua kiểm tra chính sách và người duyệt khác người soạn. Gửi thủ công qua Amazon rồi đánh dấu Đã gửi." />
+      <CardHeader title="Liên hệ khách hàng" subtitle="Amazon chỉ cho liên hệ người đánh giá 1–3★ qua Brand Registry (mẫu Customer support / Courtesy refund). Mọi tin đều qua kiểm tra chính sách và người duyệt khác người soạn; gửi trong Seller Central rồi đánh dấu Đã gửi." />
       {err && <div className="p-4"><ErrorBox message={err} /></div>}
-      {drafts.length === 0 ? <EmptyState title="Chưa có nháp" description="Soạn từ tab Triage." /> : (
+      {drafts.length === 0 ? <EmptyState title="Chưa có tin liên hệ" description="Soạn từ tab Đánh giá tiêu cực." /> : (
         <ul className="divide-y divide-gray-100">
           {drafts.map((d) => { const r = rmap[d.review_id]; const own = d.created_by === userId; const pc = d.policy_check; return (
             <li key={d.id} className="px-5 py-4">
@@ -355,7 +364,7 @@ function DraftsTab({ drafts, reviews, canWrite, userId, membersCount, onChanged 
                   {d.status === 'draft' && <button className={btn.primary} onClick={() => patch(d.id, { status: 'pending_approval' })}>Gửi duyệt</button>}
                   {d.status === 'pending_approval' && (!own || membersCount <= 1) && <><button className={btn.success} onClick={() => patch(d.id, { status: 'approved' })}>Duyệt</button><button className={btn.danger} onClick={() => { const reason = prompt('Lý do từ chối:'); if (reason) patch(d.id, { status: 'rejected', rejected_reason: reason }); }}>Từ chối</button></>}
                   {d.status === 'pending_approval' && own && membersCount > 1 && <span className="text-xs text-gray-500 self-center">Chờ người khác duyệt</span>}
-                  {d.status === 'approved' && <><button className={btn.secondary} onClick={() => navigator.clipboard?.writeText(d.body)}>Sao chép</button><button className={btn.primary} onClick={() => patch(d.id, { status: 'sent' })}>Đã gửi qua Amazon</button></>}
+                  {d.status === 'approved' && <><button className={btn.secondary} onClick={() => navigator.clipboard?.writeText(d.body)}>Sao chép</button><button className={btn.primary} onClick={() => patch(d.id, { status: 'sent' })}>Đã gửi trong Seller Central</button></>}
                   {d.status === 'rejected' && <button className={btn.secondary} onClick={() => patch(d.id, { status: 'draft' })}>Về nháp</button>}
                 </div>
               )}
@@ -393,7 +402,7 @@ function QaTab({ prec, topicMap, tenantId, canWrite, onChanged }: { prec: Prec[]
             {prec.sort((a, b) => b.total - a.total).map((p) => <tr key={p.topic_code}><td className="px-4 py-2">{topicMap[p.topic_code]?.label ?? (p.topic_code === 'UNCLASSIFIED' ? 'Chưa phân loại' : p.topic_code)}</td><td className="px-2 py-2 text-right tabular-nums">{p.total}</td><td className="px-2 py-2 text-right tabular-nums">{p.verified}</td><td className={`px-4 py-2 text-right tabular-nums font-medium ${p.precision_pct == null ? 'text-gray-400' : p.precision_pct >= 80 ? 'text-emerald-700' : 'text-red-600'}`}>{p.precision_pct != null ? `${p.precision_pct}%` : '—'}</td></tr>)}
           </tbody>
         </table>
-        <p className="px-4 py-3 text-xs text-gray-500 border-t border-gray-100">Phân loại hiện dùng từ khoá (giải thích được, không gọi AI). Chủ đề precision thấp → chỉnh từ khoá trong `review_topics`. Nháp phản hồi được rà 0 từ ngữ bị cấm bởi trigger DB.</p>
+        <p className="px-4 py-3 text-xs text-gray-500 border-t border-gray-100">Phân loại dùng từ khoá (giải thích được, không gọi AI). Chủ đề precision thấp → chỉnh từ khoá trong bảng review_topics. Tin liên hệ được rà 0 từ ngữ vi phạm chính sách bởi trigger DB.</p>
       </Card>
       <Card>
         <CardHeader title="QA mẫu ngẫu nhiên" subtitle="Rút 10 phân loại chưa QA, đánh dấu đúng/sai" action={canWrite && <button className={btn.secondary} disabled={loading} onClick={drawSample}>{loading ? '…' : 'Rút mẫu'}</button>} />

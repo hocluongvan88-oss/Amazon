@@ -8,8 +8,8 @@ export default function ReviewsPage() {
   return (
     <>
       <PageHeader
-        title="Review & tiếng nói khách hàng"
-        description="Lắng nghe và phân loại: cụm chủ đề theo ASIN, triage review sao thấp, ticket VOC, nháp phản hồi có kiểm tra chính sách và người duyệt. Không có hành động nào tác động đến rating."
+        title="Đánh giá & Voice of Customer"
+        description="Lắng nghe & xử lý: chủ đề khách nhắc đến theo ASIN, đánh giá tiêu cực 1–3★ cần xử lý, ticket VOC cho QC/listing/fulfillment, tin liên hệ khách hàng qua Brand Registry có kiểm tra chính sách và người duyệt. Đánh giá tích cực dùng để khai thác điểm mạnh cho listing & quảng cáo – không có hành động nào tác động đến rating."
       />
       <ReviewsVoc />
     </>
