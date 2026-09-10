@@ -250,7 +250,7 @@ BEGIN
 
     -- ===== STOCKOUT_IMMINENT / BELOW_REORDER_POINT =====
     IF m.days_of_cover IS NOT NULL AND m.days_of_cover < COALESCE(k.lead_time_days, pol.default_lead_time_days, 30) AND COALESCE((pol.rule_toggles->>'STOCKOUT_IMMINENT')::boolean, TRUE) THEN
-      still := still || 'STOCKOUT_IMMINENT';
+      still := array_append(still, 'STOCKOUT_IMMINENT'::text);
       qty := GREATEST(0, CEIL(v * need + v * COALESCE(pol.safety_stock_days, 14) - k.inventory_qty))::int;
       msg := format('Sắp hết hàng: còn %s ngày (%s đv, bán %s đv/ngày), lead time %s ngày', m.days_of_cover, k.inventory_qty, ROUND(v,1), COALESCE(k.lead_time_days, pol.default_lead_time_days, 30));
       ctx := jsonb_build_object('doc', m.days_of_cover, 'inventory', k.inventory_qty, 'velocity', v, 'lead_time', COALESCE(k.lead_time_days, pol.default_lead_time_days, 30), 'suggested_qty', qty, 'eta', m.stockout_eta);
@@ -268,14 +268,14 @@ BEGIN
         END IF;
       END IF;
     ELSIF k.inventory_qty < k.reorder_point AND k.reorder_point > 0 AND COALESCE((pol.rule_toggles->>'BELOW_REORDER_POINT')::boolean, TRUE) THEN
-      still := still || 'BELOW_REORDER_POINT';
+      still := array_append(still, 'BELOW_REORDER_POINT'::text);
       msg := format('Tồn %s dưới điểm đặt hàng lại %s', k.inventory_qty, k.reorder_point);
       IF public._open_exception(t, k.id, k.asin, 'BELOW_REORDER_POINT', 'P2', msg, jsonb_build_object('inventory', k.inventory_qty, 'rop', k.reorder_point), cool) THEN opened := opened + 1; END IF;
     END IF;
 
     -- ===== OVERSTOCK =====
     IF m.days_of_cover IS NOT NULL AND m.days_of_cover > need * 6 AND k.inventory_qty > 0 AND COALESCE((pol.rule_toggles->>'OVERSTOCK')::boolean, TRUE) THEN
-      still := still || 'OVERSTOCK';
+      still := array_append(still, 'OVERSTOCK'::text);
       msg := format('Tồn dư: %s ngày hàng (%s đv) so với nhu cầu %s ngày', m.days_of_cover, k.inventory_qty, need);
       IF public._open_exception(t, k.id, k.asin, 'OVERSTOCK', 'P3', msg, jsonb_build_object('doc', m.days_of_cover, 'need', need), cool) THEN
         opened := opened + 1;
@@ -298,7 +298,7 @@ BEGIN
     -- ===== MARGIN_EROSION =====
     IF m.cp_margin_now_pct IS NOT NULL AND ((m.margin_delta_pts IS NOT NULL AND m.margin_delta_pts <= -pol.margin_drop_p1_pct) OR m.cp_margin_now_pct < pol.min_margin_pct)
        AND COALESCE((pol.rule_toggles->>'MARGIN_EROSION')::boolean, TRUE) THEN
-      still := still || 'MARGIN_EROSION';
+      still := array_append(still, 'MARGIN_EROSION'::text);
       msg := CASE WHEN m.cp_margin_now_pct < pol.min_margin_pct
                   THEN format('Biên lợi nhuận góp phần %s%% dưới mức tối thiểu %s%%', m.cp_margin_now_pct, pol.min_margin_pct)
                   ELSE format('Biên giảm %s điểm so với baseline (hiện %s%%)', m.margin_delta_pts, m.cp_margin_now_pct) END;
@@ -327,21 +327,21 @@ BEGIN
     -- ===== VELOCITY_DROP =====
     IF m.velocity_change_pct IS NOT NULL AND m.velocity_change_pct <= -30 AND COALESCE(m.units_30d,0) >= 30 AND m.coverage_days_30 >= 14
        AND COALESCE((pol.rule_toggles->>'VELOCITY_DROP')::boolean, TRUE) THEN
-      still := still || 'VELOCITY_DROP';
+      still := array_append(still, 'VELOCITY_DROP'::text);
       msg := format('Tốc độ bán giảm %s%%: %s đv/ngày (7d) vs %s (30d). Kiểm tra: giá vs đối thủ, Buy Box, listing bị đè, hết hàng biến thể, quảng cáo.', ABS(m.velocity_change_pct), m.velocity_7d, m.velocity_30d);
       IF public._open_exception(t, k.id, k.asin, 'VELOCITY_DROP', 'P2', msg, jsonb_build_object('v7', m.velocity_7d, 'v30', m.velocity_30d, 'change_pct', m.velocity_change_pct), cool) THEN opened := opened + 1; END IF;
     END IF;
 
     -- ===== NO_SALES_7D =====
     IF m.days_since_last_sale IS NOT NULL AND m.days_since_last_sale >= 7 AND COALESCE(m.units_30d,0) >= 10 AND COALESCE((pol.rule_toggles->>'NO_SALES_7D')::boolean, TRUE) THEN
-      still := still || 'NO_SALES_7D';
+      still := array_append(still, 'NO_SALES_7D'::text);
       msg := format('Không có đơn %s ngày liên tiếp (30 ngày trước bán %s đv). Nghi listing bị ẩn/đè hoặc hết hàng.', m.days_since_last_sale, m.units_30d);
       IF public._open_exception(t, k.id, k.asin, 'NO_SALES_7D', 'P1', msg, jsonb_build_object('days', m.days_since_last_sale, 'u30', m.units_30d), cool) THEN opened := opened + 1; END IF;
     END IF;
 
     -- ===== PRICE_VOLATILITY =====
     IF m.price_volatility_pct IS NOT NULL AND m.price_volatility_pct >= 8 AND m.coverage_days_30 >= 14 AND COALESCE((pol.rule_toggles->>'PRICE_VOLATILITY')::boolean, TRUE) THEN
-      still := still || 'PRICE_VOLATILITY';
+      still := array_append(still, 'PRICE_VOLATILITY'::text);
       msg := format('Giá biến động %s%% trong 30 ngày – kiểm tra repricer/khuyến mãi chồng chéo', m.price_volatility_pct);
       IF public._open_exception(t, k.id, k.asin, 'PRICE_VOLATILITY', 'P3', msg, jsonb_build_object('pct', m.price_volatility_pct), cool) THEN opened := opened + 1; END IF;
     END IF;
