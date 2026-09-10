@@ -41,7 +41,8 @@ BEGIN
   END LOOP;
   -- feed orders "tươi" để không bị insufficient_data
   INSERT INTO public.ingestion_runs (tenant_id, feed_key, status, rows_total, rows_ok) VALUES (t, 'orders_daily', 'succeeded', 60, 60);
-  -- action thật kết thúc 20 ngày trước
+  -- action thật kết thúc 20 ngày trước (test seed: bật ngữ cảnh guard của 010; app không bao giờ làm vậy)
+  PERFORM set_config('vexim.action_ctx', 'on', true);
   INSERT INTO public.actions (tenant_id, sku_id, asin, action_type, mode, idempotency_key, payload, status, finished_at, created_by)
     VALUES (t, sk1, 'B0TEST0016', 'price_update', 'live', 'k016-1', '{}'::jsonb, 'succeeded', now() - interval '20 days', u_op) RETURNING id INTO act;
 
