@@ -1,0 +1,4 @@
+purchase-date,order-status,asin,quantity,item-price
+2026-09-01T10:15:00+00:00,Shipped,B08N5RRNJC,2,49.98
+2026-09-01T12:40:00+00:00,Cancelled,B08N5RRNJC,1,24.99
+2026-09-02T09:05:00+00:00,Shipped,B07XJ8C8F5,1,19.95

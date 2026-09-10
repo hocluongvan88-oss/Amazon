@@ -1,6 +1,6 @@
 import { normalizeHeader } from './csv';
 
-export type ImportKind = 'catalog' | 'cogs' | 'sales' | 'inventory' | 'fees';
+export type ImportKind = 'catalog' | 'cogs' | 'sales' | 'inventory' | 'fees' | 'orders' | 'ads';
 
 export type FieldDef = {
   key: string;
@@ -19,6 +19,8 @@ export type ImportSchema = {
   source: string;
   fields: FieldDef[];
   templateFile: string;
+  /** Dữ liệu theo ngày → ghi vào sku_daily_snapshots (gộp theo ngày + ASIN) */
+  daily?: boolean;
 };
 
 const ASIN: FieldDef = { key: 'asin', label: 'ASIN', required: true, type: 'text',
@@ -90,6 +92,37 @@ export const SCHEMAS: Record<ImportKind, ImportSchema> = {
       ASIN, SKU,
       { key: 'fee_per_unit', label: 'Phí FBA / đơn vị', required: true, type: 'number', aliases: ['estimated fee total', 'fba fees', 'fulfillment fee', 'expected fulfillment fee per unit', 'fee per unit', 'phi fba'] },
       { key: 'referral_fee_pct', label: 'Referral (%)', type: 'number', aliases: ['referral fee pct', 'referral pct', 'referral %', 'phi referral'], hint: 'Nếu file chỉ có số tiền referral, để trống – hệ thống giữ % hiện tại' },
+    ],
+  },
+  orders: {
+    kind: 'orders',
+    title: 'Đơn hàng theo ngày (All Orders)',
+    description: 'Gộp theo ngày + ASIN → đơn vị & doanh thu từng ngày. Bỏ đơn Cancelled. Nguồn cho velocity, biểu đồ, forecast.',
+    source: 'Seller Central → Reports → Fulfillment → All Orders (by order date), tối đa 30 ngày/file; hoặc Order Reports',
+    templateFile: '/templates/orders.csv',
+    daily: true,
+    fields: [
+      { key: 'date', label: 'Ngày đặt hàng', required: true, type: 'date', aliases: ['purchase date', 'purchase-date', 'order date', 'date', 'ngay'] },
+      { ...ASIN },
+      { key: 'quantity', label: 'Số lượng', required: true, type: 'int', aliases: ['quantity', 'quantity-shipped', 'quantity shipped', 'qty', 'units'] },
+      { key: 'item_price', label: 'Tiền hàng (dòng)', type: 'number', aliases: ['item price', 'item-price', 'product sales', 'price'], hint: 'Tổng tiền của dòng, không phải đơn giá' },
+      { key: 'order_status', label: 'Trạng thái đơn', type: 'text', aliases: ['order status', 'order-status', 'status'], hint: 'Dòng Cancelled sẽ bị bỏ' },
+    ],
+  },
+  ads: {
+    kind: 'ads',
+    title: 'Quảng cáo theo ngày (Sponsored Products)',
+    description: 'Chi phí, doanh thu quảng cáo, click, hiển thị từng ngày theo ASIN được quảng cáo.',
+    source: 'Ads console → Measurement & Reporting → Sponsored Products → Advertised product, Daily',
+    templateFile: '/templates/ads.csv',
+    daily: true,
+    fields: [
+      { key: 'date', label: 'Ngày', required: true, type: 'date', aliases: ['date', 'start date', 'ngay'] },
+      { key: 'asin', label: 'ASIN quảng cáo', required: true, type: 'text', aliases: ['advertised asin', 'asin'] },
+      { key: 'ad_spend', label: 'Chi phí', required: true, type: 'number', aliases: ['spend', 'cost', 'chi phi'] },
+      { key: 'ad_sales', label: 'Doanh thu QC', type: 'number', aliases: ['7 day total sales', '7 day total sales ', 'sales', '14 day total sales', 'doanh thu'] },
+      { key: 'ad_clicks', label: 'Clicks', type: 'int', aliases: ['clicks'] },
+      { key: 'ad_impressions', label: 'Hiển thị', type: 'int', aliases: ['impressions'] },
     ],
   },
 };

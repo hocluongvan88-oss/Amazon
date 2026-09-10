@@ -68,13 +68,12 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] Trang **Nhập dữ liệu** (`/import`): 5 loại (danh mục, COGS, doanh số 30 ngày, tồn kho FBA, phí), tự khớp cột theo header Seller Central, preview + validate từng dòng, upsert theo lô, lịch sử import kèm lỗi. File mẫu tại `/templates/*.csv`.
 - [x] **Gate check** trên Tổng quan: % doanh thu có đủ COGS + FBA fee + referral, thanh tiến độ vs mục tiêu, liệt kê trường thiếu; nút **Chốt baseline KPI** (RPC) làm mốc đo incremental.
 
-### Tuần 3‑4 – Canonical model & daily snapshot
-- [ ] Bảng `sku_daily_snapshots(tenant_id, sku_id, date, price, units, revenue, fees, ad_spend, sessions, cvr, inventory_fba, inventory_inbound, …)`.
-- [ ] Bảng `orders_daily`, `ad_daily`, `fees_daily`, `inbound_shipments`.
-- [ ] Job ingestion (Supabase Edge Function/cron hoặc worker riêng): SP‑API Reports (Sales & Traffic, FBA Inventory, Fee Preview), Ads API. Lưu raw → chuẩn hoá → snapshot.
-- [ ] Metric layer (SQL views/materialized): CP, margin %, TACoS, ACoS, CVR, DoC, velocity 7/30 ngày, price volatility, margin Δ vs baseline, aging.
-- [ ] UI: biểu đồ xu hướng trên Tổng quan + trang **Chi tiết ASIN**; trạng thái kết nối & lần sync cuối.
-- [ ] **Gate check**: báo cáo đối soát doanh thu/phí vs Seller Central, tolerance cấu hình được.
+### Tuần 3‑4 – Canonical model & daily snapshot ✅ (hoàn thành 2026‑09‑10, thiết kế: `docs/WEEK3-4_DESIGN.md`)
+- [x] `sku_daily_snapshots` (grain SKU×ngày, state + flow, NULL ≠ 0), chụp state hằng ngày qua `capture_daily_snapshots` + pg_cron, nút chụp tay.
+- [x] Ingestion pilot **không cần SP‑API**: import All Orders (gộp ngày×ASIN, bỏ Cancelled, ghi 0 cho ASIN không bán) và Sponsored Products daily; `refresh_sku_rolling_from_snapshots` đồng bộ 30 ngày về SKU khi đủ ≥20 ngày. SP‑API để giai đoạn systemize.
+- [x] Metric layer `sku_metrics()`: velocity 7/30 & Δ%, coverage, price volatility, CP/biên & margin Δ vs baseline, DoC/ETA hết hàng, inventory health theo lead time + safety stock, TACoS/ACoS/CVR, aging. `tenant_daily()` cho biểu đồ brand.
+- [x] UI: biểu đồ xu hướng 30/90 ngày trên Tổng quan; cột Bán/ngày 7d & ETA; thẻ **Kết nối dữ liệu & gate 3‑4**; trang **Chi tiết ASIN** (`/skus/[id]`: 6 tile, 4 biểu đồ, tab gợi ý/ngoại lệ/review/COGS/snapshot, modal sửa – COGS mới đi vào lịch sử).
+- [x] **Gate**: đối soát với Seller Central (`run_reconciliation`, lệch ≤ tolerance), coverage ≥90% doanh thu có ≥20 ngày, snapshot ≤2 ngày.
 
 ### Tuần 5‑6 – Profit bridge & exception queue
 - [ ] Hàm `compute_risk_score(sku_id)` = tổ hợp có trọng số của margin Δ, inventory health (DoC vs lead time), velocity change, price volatility. Trọng số trong `policy_register`.

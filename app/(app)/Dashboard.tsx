@@ -7,6 +7,8 @@ import { usd, num, riskLevel, RISK_META, REC_TYPE_LABEL } from '@/lib/format';
 import { Card, CardHeader, Badge, StatCard, EmptyState, Spinner, ErrorBox, btn, input } from '@/components/ui';
 import PageHeader from '@/components/PageHeader';
 import DataReadiness from '@/components/DataReadiness';
+import DataConnections from '@/components/DataConnections';
+import { RevenueProfitChart, fillDays, type DailyPoint } from '@/components/charts';
 import { useTenant } from '@/lib/tenant';
 
 type Sku = {
@@ -20,6 +22,7 @@ type Rec = {
   risk_score: number; expected_impact: number | null; required_approval_level: string;
 };
 type Exc = { id: string; code: string; message: string; asin: string | null; resolved: boolean };
+type Metric = { sku_id: string; velocity_7d: number | null; velocity_change_pct: number | null; days_of_cover: number | null; stockout_eta: string | null; inventory_health: string; coverage_days_30: number };
 
 type SortKey = 'profit30d' | 'risk' | 'cover' | 'title';
 
@@ -28,6 +31,9 @@ export default function Dashboard() {
   const [skus, setSkus] = React.useState<Sku[]>([]);
   const [recs, setRecs] = React.useState<Rec[]>([]);
   const [excs, setExcs] = React.useState<Exc[]>([]);
+  const [metrics, setMetrics] = React.useState<Record<string, Metric>>({});
+  const [trend, setTrend] = React.useState<DailyPoint[]>([]);
+  const [trendDays, setTrendDays] = React.useState<30 | 90>(30);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [q, setQ] = React.useState('');
@@ -39,10 +45,12 @@ export default function Dashboard() {
     const tid = tenant.id;
     (async () => {
       setLoading(true);
-      const [s, r, e] = await Promise.all([
-        supabase.from('amazon_skus').select('*').eq('tenant_id', tid),
+      const [s, r, e, mt, td] = await Promise.all([
+        supabase.from('amazon_skus').select('*').eq('tenant_id', tid).neq('status', 'archived'),
         supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,required_approval_level').eq('tenant_id', tid),
         supabase.from('exceptions').select('id,code,message,asin,resolved').eq('tenant_id', tid).eq('resolved', false),
+        supabase.rpc('sku_metrics', { t: tid }),
+        supabase.rpc('tenant_daily', { t: tid, days: 90 }),
       ]);
       const err = s.error ?? r.error ?? e.error;
       if (err) setError(err.message);
@@ -50,6 +58,8 @@ export default function Dashboard() {
         setSkus((s.data ?? []) as Sku[]);
         setRecs((r.data ?? []) as Rec[]);
         setExcs((e.data ?? []) as Exc[]);
+        setMetrics(Object.fromEntries(((mt.data ?? []) as Metric[]).map((x) => [x.sku_id, x])));
+        setTrend(((td.data ?? []) as DailyPoint[]));
       }
       setLoading(false);
     })();
@@ -114,7 +124,19 @@ export default function Dashboard() {
           hint={pending.length ? `Tác động ước tính ${usd(pendingImpact, 0)}/tháng` : 'Không có việc tồn đọng'} />
       </div>
 
-      <div className="mb-6"><DataReadiness /></div>
+      {/* Trend */}
+      <Card className="mb-6">
+        <CardHeader title="Xu hướng doanh thu & lợi nhuận góp phần" subtitle="Theo ngày, từ đơn hàng đã nhập và snapshot"
+          action={<div className="flex gap-1">{[30, 90].map((d) => <button key={d} onClick={() => setTrendDays(d as 30 | 90)} className={`px-2.5 py-1 text-xs rounded-md ${trendDays === d ? 'bg-slate-900 text-white' : 'bg-white border border-gray-200 text-gray-700'}`}>{d} ngày</button>)}</div>} />
+        <div className="p-3">
+          {trend.some((t) => t.units != null) ? <RevenueProfitChart data={fillDays(trend, trendDays)} /> : (
+            <EmptyState title="Chưa có dữ liệu theo ngày" description="Nhập file All Orders (Seller Central → Reports → Fulfillment → All Orders) ở mục Nhập dữ liệu để thấy xu hướng."
+              action={canWrite && <Link href="/import" className={btn.primary}>Nhập đơn hàng</Link>} />
+          )}
+        </div>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-6"><DataReadiness /><DataConnections compact /></div>
 
       {/* Action queue + exceptions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
@@ -194,6 +216,7 @@ export default function Dashboard() {
                 <th className="px-4 py-3 text-right font-medium">Bán 30 ngày</th>
                 <th className="px-4 py-3 text-right font-medium">LN 30 ngày</th>
                 <th className="px-4 py-3 text-right font-medium">Tồn kho</th>
+                <th className="px-4 py-3 text-right font-medium">Bán/ngày 7d</th>
                 <th className="px-4 py-3 text-right font-medium">Ngày hàng</th>
                 <th className="px-4 py-3 text-left font-medium">Rủi ro hết hàng</th>
                 <th className="px-4 py-3 text-right font-medium">Gợi ý</th>
@@ -205,12 +228,13 @@ export default function Dashboard() {
                 const margin = s.current_price ? (cp / Number(s.current_price)) * 100 : 0;
                 const risk = Number(s.stockout_risk_score);
                 const lvl = riskLevel(risk);
-                const cover = daysOfCover(s);
+                const mm = metrics[s.id];
+                const cover = mm?.days_of_cover ?? daysOfCover(s);
                 const open = openRecsByAsin[s.asin] ?? 0;
                 return (
                   <tr key={s.id} className="hover:bg-gray-50/70">
                     <td className="px-5 py-3">
-                      <p className="font-medium text-gray-900 max-w-xs truncate">{s.title}</p>
+                      <Link href={`/skus/${s.id}`} className="font-medium text-gray-900 hover:text-indigo-700 max-w-xs truncate block">{s.title}</Link>
                       <p className="text-xs text-gray-500 font-mono">{s.asin}{s.sku ? ` · ${s.sku}` : ''}</p>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">{usd(s.current_price)}</td>
@@ -225,7 +249,16 @@ export default function Dashboard() {
                       <span className="block text-xs text-gray-500">ROP {num(s.reorder_point)}</span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
-                      {cover == null ? '—' : <span className={cover < 21 ? 'text-red-600 font-medium' : ''}>{cover.toFixed(0)} ngày</span>}
+                      {mm?.velocity_7d != null ? (<>
+                        <span>{mm.velocity_7d}</span>
+                        {mm.velocity_change_pct != null && <span className={`block text-xs ${mm.velocity_change_pct < -20 ? 'text-red-600' : mm.velocity_change_pct > 20 ? 'text-emerald-600' : 'text-gray-500'}`}>{mm.velocity_change_pct > 0 ? '▲' : '▼'} {Math.abs(mm.velocity_change_pct)}%</span>}
+                      </>) : <span className="text-xs text-gray-400" title="Chưa có dữ liệu theo ngày">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {cover == null ? '—' : (<>
+                        <span className={cover < 21 ? 'text-red-600 font-medium' : ''}>{Number(cover).toFixed(0)} ngày</span>
+                        {mm?.stockout_eta && <span className="block text-xs text-gray-500">hết ~{new Date(mm.stockout_eta).toLocaleDateString('vi-VN')}</span>}
+                      </>)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -247,7 +280,7 @@ export default function Dashboard() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <EmptyState title={skus.length ? 'Không có ASIN khớp bộ lọc' : 'Chưa có ASIN nào'}
                       action={!skus.length && canWrite && <Link href="/add-sku" className={btn.primary}>Thêm SKU đầu tiên</Link>} />
                   </td>
@@ -257,7 +290,7 @@ export default function Dashboard() {
           </table>
         </div>
         <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-500">
-          LN góp phần = giá − COGS − phí FBA − phí referral. Ngày hàng = tồn kho ÷ tốc độ bán/ngày. ROP = điểm đặt hàng lại.
+          LN góp phần = giá − COGS − phí FBA − phí referral. Bán/ngày 7d và Ngày hàng lấy từ dữ liệu đơn hàng theo ngày nếu có, nếu không dùng doanh số 30 ngày. ROP = điểm đặt hàng lại. Bấm tên sản phẩm để xem chi tiết.
         </div>
       </Card>
     </>

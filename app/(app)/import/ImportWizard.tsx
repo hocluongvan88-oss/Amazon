@@ -90,6 +90,56 @@ export default function ImportWizard() {
     const { data: existing } = await supabase.from('amazon_skus').select('id, asin').eq('tenant_id', tenant.id);
     const byAsin = new Map((existing ?? []).map((s) => [s.asin as string, s.id as string]));
 
+    if (schema.daily) {
+      // ---- Gộp theo ngày + ASIN ----
+      type Agg = { units: number; revenue: number; ad_spend: number; ad_sales: number; ad_clicks: number; ad_impressions: number };
+      const agg = new Map<string, Agg>();
+      const days = new Set<string>();
+      let skipped = 0;
+      for (const p of valid) {
+        const st = String(p.data.order_status ?? '').toLowerCase();
+        if (kind === 'orders' && (st.includes('cancel') || st.includes('huỷ') || st.includes('huy'))) { skipped++; continue; }
+        const asin = String(p.data.asin);
+        const date = String(p.data.date);
+        if (!byAsin.has(asin)) { errors.push({ row: p.row, asin, message: 'ASIN chưa có trong danh mục – bỏ qua' }); continue; }
+        days.add(date);
+        const key = `${asin}|${date}`;
+        const a = agg.get(key) ?? { units: 0, revenue: 0, ad_spend: 0, ad_sales: 0, ad_clicks: 0, ad_impressions: 0 };
+        if (kind === 'orders') { a.units += Number(p.data.quantity ?? 0); a.revenue += Number(p.data.item_price ?? 0); }
+        else { a.ad_spend += Number(p.data.ad_spend ?? 0); a.ad_sales += Number(p.data.ad_sales ?? 0); a.ad_clicks += Number(p.data.ad_clicks ?? 0); a.ad_impressions += Number(p.data.ad_impressions ?? 0); }
+        agg.set(key, a);
+      }
+      // Với đơn hàng: ASIN trong danh mục không có đơn ngày đó → 0 (để velocity đúng)
+      const rows: Record<string, unknown>[] = [];
+      const dayList = [...days].sort();
+      if (kind === 'orders') {
+        for (const [asin, id] of byAsin) for (const date of dayList) {
+          const a = agg.get(`${asin}|${date}`);
+          rows.push({ sku_id: id, date, tenant_id: tenant.id, asin, units: a?.units ?? 0, revenue: a ? Math.round(a.revenue * 100) / 100 : 0, sources: { orders: 'csv' } });
+        }
+      } else {
+        for (const [key, a] of agg) {
+          const [asin, date] = key.split('|');
+          rows.push({ sku_id: byAsin.get(asin), date, tenant_id: tenant.id, asin, ad_spend: Math.round(a.ad_spend * 100) / 100, ad_sales: Math.round(a.ad_sales * 100) / 100, ad_clicks: a.ad_clicks, ad_impressions: a.ad_impressions, sources: { ads: 'csv' } });
+        }
+      }
+      for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500);
+        const { error } = await supabase.from('sku_daily_snapshots').upsert(chunk, { onConflict: 'sku_id,date' });
+        if (error) { errors.push({ row: 0, asin: '', message: error.message }); break; }
+        ok += chunk.length;
+      }
+      if (kind === 'orders') await supabase.rpc('refresh_sku_rolling_from_snapshots', { t: tenant.id });
+      await supabase.from('import_jobs').insert({
+        tenant_id: tenant.id, kind, filename: parsed?.filename, rows_total: prepared.length, rows_ok: ok, rows_failed: errors.length,
+        errors: errors.slice(0, 200), column_map: { ...map, _days: dayList.length, _skipped_cancelled: skipped },
+      });
+      setResult({ ok, failed: errors.length, errors });
+      setRunning(false);
+      loadJobs();
+      return;
+    }
+
     const CHUNK = 200;
     for (let i = 0; i < valid.length; i += CHUNK) {
       const chunk = valid.slice(i, i + CHUNK);
@@ -188,7 +238,7 @@ export default function ImportWizard() {
               </button>
               {result && (
                 <div className="w-full mt-2 rounded-lg bg-gray-50 border border-gray-200 p-4 text-sm">
-                  <p className="font-medium text-gray-900">Kết quả: {result.ok} thành công · {result.failed} lỗi</p>
+                  <p className="font-medium text-gray-900">Kết quả: {result.ok} {schema.daily ? 'bản ghi ngày×ASIN' : 'dòng'} thành công · {result.failed} lỗi</p>
                   {result.errors.length > 0 && (
                     <ul className="mt-2 max-h-48 overflow-auto text-xs text-red-700 space-y-0.5">
                       {result.errors.slice(0, 50).map((e, i) => <li key={i}>Dòng {e.row} {e.asin && <span className="font-mono">{e.asin}</span>}: {e.message}</li>)}
