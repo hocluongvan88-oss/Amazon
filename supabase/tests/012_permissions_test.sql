@@ -3,30 +3,24 @@
 -- Mô phỏng user bằng cách set request.jwt.claims; toàn bộ trong 1 transaction, ROLLBACK cuối.
 -- Kết quả mong đợi: mọi dòng NOTICE 'PASS …'; nếu có 'FAIL …' → dừng lại.
 -- ============================================================
-BEGIN;
-
-CREATE TEMP TABLE _t (name TEXT, ok BOOLEAN);
-CREATE OR REPLACE FUNCTION pg_temp.as_user(u UUID) RETURNS VOID LANGUAGE sql AS $$
-  SELECT set_config('request.jwt.claims', json_build_object('sub', u::text, 'email', u::text || '@test.local', 'role', 'authenticated')::text, true);
-$$;
-CREATE OR REPLACE FUNCTION pg_temp.expect_error(name TEXT, sql TEXT) RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  BEGIN EXECUTE sql; INSERT INTO _t VALUES (name, false);
-  EXCEPTION WHEN OTHERS THEN INSERT INTO _t VALUES (name, true); END;
-END $$;
-CREATE OR REPLACE FUNCTION pg_temp.expect_ok(name TEXT, sql TEXT) RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  BEGIN EXECUTE sql; INSERT INTO _t VALUES (name, true);
-  EXCEPTION WHEN OTHERS THEN INSERT INTO _t VALUES (name || ' (' || SQLERRM || ')', false); END;
-END $$;
-
--- Fixture: tenant + 7 users
+-- Một khối DO duy nhất (SQL Editor/pooler không giữ TEMP giữa các câu lệnh).
+-- Kết thúc bằng RAISE EXCEPTION để ROLLBACK toàn bộ — thông báo "lỗi" cuối cùng chính là bảng kết quả.
 DO $$
 DECLARE t UUID; sku UUID; rec UUID;
   u_owner UUID := gen_random_uuid(); u_lead UUID := gen_random_uuid(); u_op UUID := gen_random_uuid();
   u_fin UUID := gen_random_uuid(); u_qa UUID := gen_random_uuid(); u_brand UUID := gen_random_uuid(); u_view UUID := gen_random_uuid();
   u UUID;
+  _r RECORD; _fails INT := 0; _out TEXT := '';
 BEGIN
+  CREATE TEMP TABLE _t (name TEXT, ok BOOLEAN) ON COMMIT DROP;
+  EXECUTE $f$CREATE OR REPLACE FUNCTION pg_temp.as_user(u UUID) RETURNS VOID LANGUAGE sql AS $b$
+    SELECT set_config('request.jwt.claims', json_build_object('sub', u::text, 'email', u::text || '@test.local', 'role', 'authenticated')::text, true);
+  $b$$f$;
+  EXECUTE $f$CREATE OR REPLACE FUNCTION pg_temp.expect_error(name TEXT, sql TEXT) RETURNS VOID LANGUAGE plpgsql AS $b$
+  BEGIN BEGIN EXECUTE sql; INSERT INTO _t VALUES (name, false); EXCEPTION WHEN OTHERS THEN INSERT INTO _t VALUES (name, true); END; END $b$$f$;
+  EXECUTE $f$CREATE OR REPLACE FUNCTION pg_temp.expect_ok(name TEXT, sql TEXT) RETURNS VOID LANGUAGE plpgsql AS $b$
+  BEGIN BEGIN EXECUTE sql; INSERT INTO _t VALUES (name, true); EXCEPTION WHEN OTHERS THEN INSERT INTO _t VALUES (name || ' (' || SQLERRM || ')', false); END; END $b$$f$;
+
   FOREACH u IN ARRAY ARRAY[u_owner,u_lead,u_op,u_fin,u_qa,u_brand,u_view] LOOP
     INSERT INTO auth.users (id, email, instance_id, aud, role, encrypted_password, created_at, updated_at)
     VALUES (u, u::text || '@test.local', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '', now(), now());
@@ -116,17 +110,10 @@ BEGIN
   INSERT INTO _t SELECT 'schema: no required_approval_level', NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='recommendations' AND column_name='required_approval_level');
   INSERT INTO _t SELECT 'schema: actions.automation_level exists', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='actions' AND column_name='automation_level');
   INSERT INTO _t SELECT 'policy: max_automation_level default L3', (SELECT max_automation_level = 'L3' FROM public.policy_register WHERE tenant_id = t);
-END $$;
 
--- Báo cáo
-DO $$
-DECLARE r RECORD; fails INT := 0;
-BEGIN
-  FOR r IN SELECT * FROM _t LOOP
-    RAISE NOTICE '% %', CASE WHEN r.ok THEN 'PASS' ELSE 'FAIL' END, r.name;
-    IF NOT r.ok THEN fails := fails + 1; END IF;
+  FOR _r IN SELECT * FROM _t LOOP
+    _out := _out || E'\n' || CASE WHEN _r.ok THEN 'PASS ' ELSE 'FAIL ' END || _r.name;
+    IF NOT _r.ok THEN _fails := _fails + 1; END IF;
   END LOOP;
-  RAISE NOTICE '=== % test, % FAIL ===', (SELECT count(*) FROM _t), fails;
+  RAISE EXCEPTION E'=== KẾT QUẢ TEST (đã rollback, đây KHÔNG phải lỗi) — % test, % FAIL ===%', (SELECT count(*) FROM _t), _fails, _out;
 END $$;
-
-ROLLBACK;
