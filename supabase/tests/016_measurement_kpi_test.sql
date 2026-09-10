@@ -4,7 +4,7 @@
 -- Một khối DO duy nhất (SQL Editor/pooler không giữ TEMP giữa các câu lệnh).
 -- Kết thúc bằng RAISE EXCEPTION để ROLLBACK toàn bộ — thông báo "lỗi" cuối cùng chính là bảng kết quả.
 DO $$
-DECLARE t UUID; sku UUID; sku2 UUID; sku3 UUID; act UUID; act2 UUID; cv UUID; m public.measurements; kp JSONB; sc JSONB; n INT; d INT; rv UUID;
+DECLARE t UUID; sk1 UUID; sku2 UUID; sku3 UUID; act UUID; act2 UUID; cv UUID; m public.measurements; kp JSONB; sc JSONB; n INT; d INT; rv UUID;
   u_op UUID := gen_random_uuid(); u_qa UUID := gen_random_uuid(); u_view UUID := gen_random_uuid(); u UUID;
   _r RECORD; _fails INT := 0; _out TEXT := '';
 BEGIN
@@ -24,18 +24,18 @@ BEGIN
   INSERT INTO public.tenants (slug, name) VALUES ('t016', 'Test 016') RETURNING id INTO t;
   INSERT INTO public.tenant_members (tenant_id, user_id, role) VALUES (t, u_op, 'operator'), (t, u_qa, 'owner'), (t, u_view, 'viewer');
   INSERT INTO public.amazon_skus (tenant_id, asin, sku, title, marketplace, current_price, cogs, fee_per_unit, referral_fee_pct, inventory_qty)
-  VALUES (t, 'B0TEST0016', 'T-016', 'Bình nước', 'US', 30, 10, 5, 15, 0) RETURNING id INTO sku;
+  VALUES (t, 'B0TEST0016', 'T-016', 'Bình nước', 'US', 30, 10, 5, 15, 0) RETURNING id INTO sk1;
   INSERT INTO public.raw_reviews (tenant_id, asin, rating, title, body, reviewed_at) VALUES (t, 'B0TEST0016', 1, 'Leaks', 'Nắp bị rò', now()) RETURNING id INTO rv;
 
-  -- Dữ liệu: 3 ASIN, 60 ngày. sku = ASIN tác động (CP tăng sau ngày -20); sku2/sku3 = đối chứng ổn định
+  -- Dữ liệu: 3 ASIN, 60 ngày. sk1 = ASIN tác động (CP tăng sau ngày -20); sku2/sku3 = đối chứng ổn định
   INSERT INTO public.amazon_skus (tenant_id, asin, sku, title, marketplace, current_price, cogs, fee_per_unit, referral_fee_pct, inventory_qty) VALUES
     (t, 'B0CTRL00162', 'C-2', 'Đối chứng 2', 'US', 30, 10, 5, 15, 500) RETURNING id INTO sku2;
   INSERT INTO public.amazon_skus (tenant_id, asin, sku, title, marketplace, current_price, cogs, fee_per_unit, referral_fee_pct, inventory_qty) VALUES
     (t, 'B0CTRL00163', 'C-3', 'Đối chứng 3', 'US', 30, 10, 5, 15, 500) RETURNING id INTO sku3;
-  UPDATE public.amazon_skus SET inventory_qty = 500 WHERE id = sku;
+  UPDATE public.amazon_skus SET inventory_qty = 500 WHERE id = sk1;
   FOR d IN 1..60 LOOP
     INSERT INTO public.sku_daily_snapshots (sku_id, tenant_id, asin, date, units, revenue, sessions, ad_spend, price, contribution_profit, inventory_qty) VALUES
-      (sku,  t, 'B0TEST0016', CURRENT_DATE - d, CASE WHEN d < 20 THEN 10 ELSE 5 END, 300, 100, 10, 30, 10, 500),
+      (sk1,  t, 'B0TEST0016', CURRENT_DATE - d, CASE WHEN d < 20 THEN 10 ELSE 5 END, 300, 100, 10, 30, 10, 500),
       (sku2, t, 'B0CTRL00162', CURRENT_DATE - d, 6, 180, 100, 10, 30, 10, 500),
       (sku3, t, 'B0CTRL00163', CURRENT_DATE - d, 6, 180, 100, 10, 30, 10, 500);
   END LOOP;
@@ -43,7 +43,7 @@ BEGIN
   INSERT INTO public.ingestion_runs (tenant_id, feed_key, status, rows_total, rows_ok) VALUES (t, 'orders_daily', 'succeeded', 60, 60);
   -- action thật kết thúc 20 ngày trước
   INSERT INTO public.actions (tenant_id, sku_id, asin, action_type, mode, idempotency_key, payload, status, finished_at, created_by)
-    VALUES (t, sku, 'B0TEST0016', 'price_update', 'live', 'k016-1', '{}'::jsonb, 'succeeded', now() - interval '20 days', u_op) RETURNING id INTO act;
+    VALUES (t, sk1, 'B0TEST0016', 'price_update', 'live', 'k016-1', '{}'::jsonb, 'succeeded', now() - interval '20 days', u_op) RETURNING id INTO act;
 
   -- 1. measure_subject: action có đối chứng → CP tăng, không confounder → confidence high (CI không chứa 0 vì dữ liệu phẳng)
   PERFORM pg_temp.as_user(u_op);
@@ -62,7 +62,7 @@ BEGIN
 
   -- 2. Thay đổi đồng thời → confounded, không chia attribution
   INSERT INTO public.actions (tenant_id, sku_id, asin, action_type, mode, idempotency_key, payload, status, finished_at, created_by)
-    VALUES (t, sku, 'B0TEST0016', 'price_update', 'live', 'k016-2', '{}'::jsonb, 'succeeded', now() - interval '15 days', u_op) RETURNING id INTO act2;
+    VALUES (t, sk1, 'B0TEST0016', 'price_update', 'live', 'k016-2', '{}'::jsonb, 'succeeded', now() - interval '15 days', u_op) RETURNING id INTO act2;
   m := public.measure_subject('action', act, 14);
   INSERT INTO _t SELECT 'confounded: re-measure updates same row', (SELECT count(*) FROM public.measurements WHERE subject_id = act AND window_days = 14) = 1;
   INSERT INTO _t SELECT 'confounded: concurrent action detected', m.concurrent_changes @> '[{"type":"action"}]';
@@ -72,7 +72,7 @@ BEGIN
   -- 3. Content version publish → measurable, cvr delta
   -- không có uid → trigger bỏ qua kiểm tra quyền/gate (test chỉ cần bản published có mốc thời gian)
   PERFORM set_config('request.jwt.claims', '', true);
-  INSERT INTO public.content_versions (tenant_id, sku_id, kind, body, created_by) VALUES (t, sku, 'title', '{"text":"Tritan bottle 750 ml"}'::jsonb, u_op) RETURNING id INTO cv;
+  INSERT INTO public.content_versions (tenant_id, sku_id, kind, body, created_by) VALUES (t, sk1, 'title', '{"text":"Tritan bottle 750 ml"}'::jsonb, u_op) RETURNING id INTO cv;
   UPDATE public.content_versions SET status = 'qa_review' WHERE id = cv;
   UPDATE public.content_versions SET status = 'qa_passed' WHERE id = cv;
   UPDATE public.content_versions SET status = 'awaiting_brand_approval' WHERE id = cv;

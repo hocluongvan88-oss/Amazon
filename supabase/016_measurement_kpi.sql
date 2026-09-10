@@ -66,16 +66,16 @@ CREATE TRIGGER trg_measurements_guard BEFORE UPDATE ON public.measurements FOR E
 CREATE OR REPLACE FUNCTION public.measure_subject(p_type TEXT, p_id UUID, p_days INT DEFAULT 14)
 RETURNS public.measurements LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  m public.measurements; t UUID; sku UUID; asin_ TEXT; d0 TIMESTAMPTZ; dd DATE; existing public.measurements;
+  m public.measurements; t UUID; v_sku UUID; asin_ TEXT; d0 TIMESTAMPTZ; dd DATE; existing public.measurements;
   b RECORD; a RECORD; c RECORD; conc JSONB := '[]'::jsonb; n INT; se NUMERIC; ctrl_ratio NUMERIC := 1; inc NUMERIC; conf TEXT; note_ TEXT;
   orders_fresh BOOLEAN; ads_fresh BOOLEAN; cvr_d NUMERIC; base_units NUMERIC;
 BEGIN
   IF p_days NOT IN (7, 14, 28) THEN RAISE EXCEPTION 'window_days phải là 7, 14 hoặc 28'; END IF;
   IF p_type = 'action' THEN
-    SELECT tenant_id, sku_id, asin, finished_at INTO t, sku, asin_, d0 FROM public.actions WHERE id = p_id AND mode <> 'dry_run' AND status IN ('succeeded','rolled_back');
+    SELECT tenant_id, sku_id, asin, finished_at INTO t, v_sku, asin_, d0 FROM public.actions WHERE id = p_id AND mode <> 'dry_run' AND status IN ('succeeded','rolled_back');
     IF t IS NULL THEN RAISE EXCEPTION 'Action không tồn tại / dry‑run / chưa hoàn tất'; END IF;
   ELSIF p_type = 'content_version' THEN
-    SELECT v.tenant_id, v.sku_id, k.asin, v.published_at INTO t, sku, asin_, d0 FROM public.content_versions v JOIN public.amazon_skus k ON k.id = v.sku_id WHERE v.id = p_id;
+    SELECT v.tenant_id, v.sku_id, k.asin, v.published_at INTO t, v_sku, asin_, d0 FROM public.content_versions v JOIN public.amazon_skus k ON k.id = v.sku_id WHERE v.id = p_id;
     IF t IS NULL OR d0 IS NULL THEN RAISE EXCEPTION 'Content chưa publish'; END IF;
   ELSE RAISE EXCEPTION 'subject_type không hợp lệ'; END IF;
   IF auth.uid() IS NOT NULL AND NOT (t IN (SELECT public.my_tenant_ids())) THEN RAISE EXCEPTION 'Không có quyền'; END IF;
@@ -88,26 +88,26 @@ BEGIN
   SELECT COUNT(*) AS days, COALESCE(SUM(units),0) AS units, COALESCE(SUM(sessions),0) AS sessions,
          AVG(units * contribution_profit) AS cp_day, STDDEV_SAMP(units * contribution_profit) AS cp_sd,
          AVG(price) AS price, COALESCE(SUM(ad_spend),0) AS ad_spend, COUNT(*) FILTER (WHERE inventory_qty = 0) AS oos_days
-    INTO b FROM public.sku_daily_snapshots WHERE sku_id = sku AND units IS NOT NULL AND date BETWEEN dd - p_days AND dd - 1;
+    INTO b FROM public.sku_daily_snapshots WHERE sku_id = v_sku AND units IS NOT NULL AND date BETWEEN dd - p_days AND dd - 1;
   SELECT COUNT(*) AS days, COALESCE(SUM(units),0) AS units, COALESCE(SUM(sessions),0) AS sessions,
          AVG(units * contribution_profit) AS cp_day, STDDEV_SAMP(units * contribution_profit) AS cp_sd,
          AVG(price) AS price, COALESCE(SUM(ad_spend),0) AS ad_spend, COUNT(*) FILTER (WHERE inventory_qty = 0) AS oos_days
-    INTO a FROM public.sku_daily_snapshots WHERE sku_id = sku AND units IS NOT NULL AND date BETWEEN dd + 1 AND dd + p_days;
+    INTO a FROM public.sku_daily_snapshots WHERE sku_id = v_sku AND units IS NOT NULL AND date BETWEEN dd + 1 AND dd + p_days;
 
   -- Đối chứng: ASIN active cùng tenant, không có action thật / content publish trong cửa sổ
   SELECT AVG(x.cp) FILTER (WHERE x.date < dd) AS cpb, AVG(x.cp) FILTER (WHERE x.date > dd) AS cpa, COUNT(DISTINCT x.sku_id) AS n INTO c
   FROM (
     SELECT s.sku_id, s.date, s.units * s.contribution_profit AS cp FROM public.sku_daily_snapshots s
     JOIN public.amazon_skus k ON k.id = s.sku_id AND k.status = 'active'
-    WHERE s.tenant_id = t AND s.sku_id <> sku AND s.units IS NOT NULL AND s.contribution_profit IS NOT NULL AND s.date BETWEEN dd - p_days AND dd + p_days AND s.date <> dd
+    WHERE s.tenant_id = t AND s.sku_id <> v_sku AND s.units IS NOT NULL AND s.contribution_profit IS NOT NULL AND s.date BETWEEN dd - p_days AND dd + p_days AND s.date <> dd
       AND NOT EXISTS (SELECT 1 FROM public.actions x WHERE x.sku_id = s.sku_id AND x.mode <> 'dry_run' AND x.status IN ('succeeded','rolled_back') AND x.finished_at::date BETWEEN dd - p_days AND dd + p_days)
       AND NOT EXISTS (SELECT 1 FROM public.content_versions x WHERE x.sku_id = s.sku_id AND x.published_at::date BETWEEN dd - p_days AND dd + p_days)
   ) x;
 
   -- Thay đổi đồng thời trên chính ASIN (mọi loại; loại trừ chính subject)
-  SELECT count(*) INTO n FROM public.actions x WHERE x.sku_id = sku AND x.mode <> 'dry_run' AND x.status IN ('succeeded','rolled_back') AND x.id <> p_id AND x.finished_at::date BETWEEN dd - p_days AND dd + p_days;
+  SELECT count(*) INTO n FROM public.actions x WHERE x.sku_id = v_sku AND x.mode <> 'dry_run' AND x.status IN ('succeeded','rolled_back') AND x.id <> p_id AND x.finished_at::date BETWEEN dd - p_days AND dd + p_days;
   IF n > 0 THEN conc := conc || jsonb_build_object('type','action','n',n,'msg',format('%s lệnh thật khác (giá/tồn kho) trong cửa sổ', n)); END IF;
-  SELECT count(*) INTO n FROM public.content_versions x WHERE x.sku_id = sku AND x.id <> p_id AND x.published_at::date BETWEEN dd - p_days AND dd + p_days;
+  SELECT count(*) INTO n FROM public.content_versions x WHERE x.sku_id = v_sku AND x.id <> p_id AND x.published_at::date BETWEEN dd - p_days AND dd + p_days;
   IF n > 0 THEN conc := conc || jsonb_build_object('type','content','n',n,'msg',format('%s content khác publish trong cửa sổ', n)); END IF;
   IF b.price IS NOT NULL AND a.price IS NOT NULL AND abs(a.price - b.price) / NULLIF(b.price,0) > 0.02 THEN conc := conc || jsonb_build_object('type','price','msg',format('Giá TB %s → %s', round(b.price,2), round(a.price,2))); END IF;
   IF b.ad_spend > 0 AND abs(a.ad_spend - b.ad_spend) / b.ad_spend > 0.2 THEN conc := conc || jsonb_build_object('type','ads','msg',format('Chi phí ads %s%%', round((a.ad_spend - b.ad_spend) / b.ad_spend * 100))); END IF;
@@ -141,7 +141,7 @@ BEGIN
 
   INSERT INTO public.measurements (tenant_id, subject_type, subject_id, sku_id, asin, change_at, window_days, baseline, observed, control, concurrent_changes, data_quality,
       incremental_cp_per_day, incremental_cp_total, ci_low, ci_high, cvr_delta_pct, confidence, note, measured_by)
-  VALUES (t, p_type, p_id, sku, asin_, d0, p_days,
+  VALUES (t, p_type, p_id, v_sku, asin_, d0, p_days,
       jsonb_build_object('from', dd - p_days, 'to', dd - 1, 'days', b.days, 'units', b.units, 'sessions', b.sessions, 'cp_per_day', round(b.cp_day,2), 'avg_price', round(b.price,2), 'ad_spend', b.ad_spend, 'cvr', CASE WHEN b.sessions > 0 THEN round(b.units::numeric / b.sessions, 4) END),
       jsonb_build_object('from', dd + 1, 'to', dd + p_days, 'days', a.days, 'units', a.units, 'sessions', a.sessions, 'cp_per_day', round(a.cp_day,2), 'avg_price', round(a.price,2), 'ad_spend', a.ad_spend, 'cvr', CASE WHEN a.sessions > 0 THEN round(a.units::numeric / a.sessions, 4) END),
       CASE WHEN c.n >= 2 THEN jsonb_build_object('n', c.n, 'cp_before', round(c.cpb,2), 'cp_after', round(c.cpa,2), 'change_pct', round((ctrl_ratio - 1) * 100, 1)) END,
