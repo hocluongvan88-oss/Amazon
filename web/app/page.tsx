@@ -1,16 +1,14 @@
 /*
- * Dashboard page for Vexim Amazon Managed Operations
- * - Shows a list of ASINs with contribution profit & stockout risk
- * - Requires Supabase authentication (sign‑in with Google or email/password)
- * - Row‑level security enforced via the profiles / amazon_skus policies
+ * Trangdashboard Vexim Amazon Managed Operations
+ * Hiện đại, thân thiện người dùng, bố cục rõ ràng – 100% tiếng Việt.
  */
 
 import { supabase } from '@/lib/supabase/client';
 
 export async function metadata() {
   return {
-    title: 'Vexim — Amazon Operations Dashboard',
-    description: 'Pilot dashboard for contribution profit, inventory & recommendations',
+    title: 'Vexim – Bảng điều khiển vận hành Amazon',
+    description: 'Pilot dashboard: lợi nhuận góp phần, tồn kho & gợi ý',
   };
 }
 
@@ -38,48 +36,98 @@ export default function DashboardPage() {
     fetchSkus();
   }, []);
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+  if (loading) return <p>Đang tải dữ liệu…</p>;
+  if (error) return <p style={{ color: 'red' }}>Lỗi: {error}</p>;
 
   return (
-    <section className="p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold mb-6">Vexim Dashboard</h1>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border-border">
-          <thead>
+    <section className="py-8 bg-gray-50">
+      {/* Header hiện đại */}
+      <header className="max-w-7xl mx-auto mb-6 flex items-center justify-between flex-col sm:flex-row gap-4">
+        <h1 className="text-3xl font-bold text-gray-900">Bảng điều khiển Vexim</h1>
+        <nav className="flex items-center gap-3">
+          <a href="/recommendations" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
+            Xem các gợi ý
+          </a>
+          <a href="/add-sku" className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+            Thêm SKU mới
+          </a>
+        </nav>
+      </header>
+
+      {/* Khối thống kê nhanh (cards) */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Ví dụ card count có thể mở rộng sau khi đếm */}
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <p className="text-sm text-gray-500">Tổng ASIN</p>
+          <p className="text-3xl font-bold text-gray-900">{skus.length}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <p className="text-sm text-gray-500">Lợi nhuận góp phần tổng</p>
+          <p className="text-3xl font-bold text-green-600">
+            {(skus.reduce((sum: number, s: any) => sum + (s.contribution_profit ?? 0), 0) as number).toFixed(2)}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <p className="text-sm text-gray-500">TB risk tồn kho</p>
+          <p className="text-3xl font-bold text-orange-600">
+            {(skus.length > 0
+              ? (skus.reduce((sum: number, s: any) => sum + (s.stockout_risk_score ?? 0), 0) / skus.length) as number
+              : 0).toFixed(1)}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <p className="text-sm text-gray-500">Đã chọn</p>
+          <p className="text-3xl font-bold text-blue-600">{/* placeholder */}</p>
+        </div>
+      </div>
+
+      {/* Bảng danh sách ASIN */}
+      <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-xl overflow-hidden border border-gray-200">
+        <table className="w-full text-sm text-gray-700">
+          <thead className="bg-gray-50">
             <tr>
-              <th className="border border-border px-4 py-2 text-left">ASIN</th>
-              <th className="border border-border px-4 py-2 text-left">Title</th>
-              <th className="border border-border px-4 py-2 text-right">Contribution Profit</th>
-              <th className="border border-border px-4 py-2 text-center">Stockout Risk</th>
-              <th className="border border-border px-4 py-2 text-left">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                ASIN
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Tên sản phẩm
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Lợi nhuận góp phần (USD)
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Rủi ro tồn kho
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Hành động
+              </th>
             </tr>
           </thead>
           <tbody>
             {skus.map((sku) => (
-              <tr key={sku.id} className="hover:bg-white/50 transition">
-                <td className="border border-border px-4 py-2">{sku.asin}</td>
-                <td className="border border-border px-4 py-2 truncate">{sku.title}</td>
-                <td className="border border-border px-4 py-2 text-right font-mono">
-                  ${sku.contribution_profit?.toFixed(2) || '—'}
+              <tr key={sku.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-medium text-gray-900">{sku.asin}</td>
+                <td className="px-6 py-4 truncate text-gray-700">{sku.title}</td>
+                <td className="px-6 py-4 text-right font-medium text-gray-900">
+                  {sku.contribution_profit?.toFixed(2) || '—'}
                 </td>
-                <td className="border border-border px-4 py-2 text-center">
+                <td className="px-6 py-4 text-center">
                   {sku.stockout_risk_score?.toFixed(1) || '—'}
                 </td>
-                <td className="border border-border px-4 py-2">
+                <td className="px-6 py-4 text-right">
                   <button
-                    className="px-2 py-1 text-sm text-blue-600 underline"
-                    onClick =(() => window.open(`/recommendations/${sku.id}`, '_blank'))
+                    className="px-3 py-1.5 text-sm font-medium text-blue-600 underline hover:text-indigo-600"
+                    onClick={() => window.open(`/recommendations/${sku.id}`, '_blank')}
                   >
-                    Generate rec
+                    Tạo gợi ý
                   </button>
                 </td>
               </tr>
             ))}
             {skus.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-8">
-                  No ASINs found. <a href="/add-sku" className="text-blue-600 underline">Add first SKU</a>
+                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                  Chưa có ASIN. <a href="/add-sku" className="text-blue-600 underline">Thêm SKU đầu tiên</a>
                 </td>
               </tr>
             )}
