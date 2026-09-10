@@ -11,7 +11,7 @@ import { Card, CardHeader, Badge, Spinner, ErrorBox, EmptyState, btn, input } fr
 import { RiskHistoryChart, UnitsChart, PriceProfitChart, InventoryChart, AdsChart, enrich, fillDays, type DailyPoint } from '@/components/charts';
 
 type Sku = {
-  id: string; asin: string; sku: string | null; title: string; status: string; marketplace: string; supplier: string | null; lead_time_days: number | null;
+  id: string; asin: string; sku: string | null; title: string; status: string; marketplace: string; supplier: string | null; lead_time_days: number | null; inventory_inbound: number | null;
   current_price: number; list_price: number | null; cogs: number; fee_per_unit: number; referral_fee_pct: number; contribution_profit: number;
   sales_last_30d: number; revenue_last_30d: number | null; sessions_last_30d: number | null; inventory_qty: number; reorder_point: number;
   stockout_risk_score: number; risk_score: number | null; risk_components: RiskComponents; risk_computed_at: string | null; cogs_source: string | null; fee_source: string | null; cogs_updated_at: string | null; fee_updated_at: string | null; last_ingested_at: string | null;
@@ -282,7 +282,7 @@ function EditModal({ sku, onClose, onSaved }: { sku: Sku; onClose: () => void; o
   const { tenant } = useTenant();
   const [f, setF] = React.useState({
     title: sku.title, sku: sku.sku ?? '', current_price: String(sku.current_price), list_price: sku.list_price != null ? String(sku.list_price) : '',
-    fee_per_unit: String(sku.fee_per_unit), referral_fee_pct: String(sku.referral_fee_pct), inventory_qty: String(sku.inventory_qty), reorder_point: String(sku.reorder_point),
+    fee_per_unit: String(sku.fee_per_unit), referral_fee_pct: String(sku.referral_fee_pct), inventory_qty: String(sku.inventory_qty), inventory_inbound: String(sku.inventory_inbound ?? 0), reorder_point: String(sku.reorder_point),
     lead_time_days: sku.lead_time_days != null ? String(sku.lead_time_days) : '', supplier: sku.supplier ?? '', status: sku.status,
     new_cogs: '', cogs_note: '',
   });
@@ -298,7 +298,7 @@ function EditModal({ sku, onClose, onSaved }: { sku: Sku; onClose: () => void; o
     const patch: Record<string, unknown> = {
       title: f.title.trim(), sku: f.sku.trim() || null, current_price: n(f.current_price), list_price: n(f.list_price),
       fee_per_unit: n(f.fee_per_unit) ?? 0, referral_fee_pct: n(f.referral_fee_pct) ?? 15, inventory_qty: n(f.inventory_qty) ?? 0, reorder_point: n(f.reorder_point) ?? 0,
-      lead_time_days: n(f.lead_time_days), supplier: f.supplier.trim() || null, status: f.status,
+      lead_time_days: n(f.lead_time_days), inventory_inbound: n(f.inventory_inbound) ?? 0, supplier: f.supplier.trim() || null, status: f.status,
     };
     if (Number(f.fee_per_unit) !== Number(sku.fee_per_unit) || Number(f.referral_fee_pct) !== Number(sku.referral_fee_pct)) { patch.fee_source = 'manual'; patch.fee_updated_at = stamp; }
     const { error } = await supabase.from('amazon_skus').update(patch).eq('id', sku.id);
@@ -332,6 +332,7 @@ function EditModal({ sku, onClose, onSaved }: { sku: Sku; onClose: () => void; o
           <Fld {...fp} label="Phí FBA / đv" k="fee_per_unit" type="number" step="0.01" />
           <Fld {...fp} label="Referral %" k="referral_fee_pct" type="number" step="0.01" />
           <Fld {...fp} label="Tồn kho" k="inventory_qty" type="number" step="1" />
+          <Fld {...fp} label="Đang về (inbound)" k="inventory_inbound" type="number" step="1" />
           <Fld {...fp} label="Điểm đặt hàng lại" k="reorder_point" type="number" step="1" />
           <Fld {...fp} label="Lead time (ngày)" k="lead_time_days" type="number" step="1" />
           <Fld {...fp} label="Nhà cung cấp" k="supplier" />

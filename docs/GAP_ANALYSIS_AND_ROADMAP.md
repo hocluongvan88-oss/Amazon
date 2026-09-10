@@ -84,11 +84,13 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] **Gate check**: bảng precision theo rule (operator đánh dấu đúng/sai khi đóng) trên trang Ngoại lệ.
 - [ ] Chưa có (cần dữ liệu Amazon API): mất Featured Offer, ACoS vượt ngưỡng theo campaign, sụt CVR (chỉ có khi nhập sessions).
 
-### Tuần 7‑8 – Inventory & replenishment
-- [ ] Forecast baseline (moving average / Holt‑Winters) lưu vào `forecasts(sku_id, date, horizon, p50, p90, model)`; backtest vs naive.
-- [ ] Gợi ý `replenish` tự sinh: qty đề xuất từ forecast × lead time + safety stock − on hand − inbound.
-- [ ] Trang **Tồn kho**: DoC, stockout/overstock, forecast vs actual, inbound reconciliation, scenario planner (đổi lead time/safety stock → xem kết quả).
-- [ ] **Gate check**: MAPE forecast vs naive trên trang Đo lường.
+### Tuần 7‑8 – Inventory & replenishment ✅ (008)
+- [x] Forecast baseline: 3 mô hình (naive7 / ma28 / SES + hệ số thứ trong tuần), backtest cửa sổ 7 ngày trên 90 ngày, tự chọn MAPE thấp nhất cho từng ASIN; lưu `forecasts(sku_id, made_on, date, horizon, p50, p90, model)` + `forecast_backtests`. pg_cron 03:15 UTC.
+- [x] Gợi ý `replenish` tự sinh: qty = nhu cầu dự báo (lead time + an toàn + chu kỳ 28 ngày) − (on hand + inbound); rule STOCKOUT_IMMINENT dùng cùng công thức, rationale nêu mô hình + MAPE.
+- [x] Trang **Tồn kho** `/inventory`: trạng thái (hết / đặt ngay / đặt sớm / tồn dư / ổn), DoC, ngày hết hàng, ngày phải đặt, đề xuất, forecast vs actual (P50/P90), **scenario planner** (lead time, an toàn, P90, tính inbound) so với mặc định, tạo gợi ý 1 click.
+- [x] Inbound: cột `inventory_inbound` (import Tồn kho / sửa ASIN), có trong snapshot.
+- [x] **Gate check**: MAPE mô hình chọn vs naive trên trang Tồn kho (`v_forecast_accuracy`).
+- [ ] Chưa có: đối soát inbound với shipment thực tế (cần dữ liệu FBA shipment).
 
 ### Tuần 9‑10 – Review / VOC
 - [ ] Bảng `review_topics`, `review_classifications(review_id, topic, sentiment, severity)`, `voc_tickets(type: defect|content|logistics, status)`.

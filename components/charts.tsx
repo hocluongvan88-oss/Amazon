@@ -172,3 +172,25 @@ export function RiskHistoryChart({ data, height = 160 }: { data: { date: string;
     </ResponsiveContainer>
   );
 }
+
+/* ---------- Forecast vs actual ---------- */
+export type ForecastPoint = { date: string; actual?: number | null; p50?: number | null; p90?: number | null };
+
+export function ForecastChart({ data, height = 200 }: { data: ForecastPoint[]; height?: number }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+        <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} minTickGap={24} />
+        <YAxis tick={{ fontSize: 11 }} width={32} tickFormatter={fmtNum} />
+        <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => `Ngày ${fmtDate(String(l))}`}
+          formatter={(v, n) => [fmtNum(Number(v)), n === 'actual' ? 'Thực tế' : n === 'p50' ? 'Dự báo P50' : 'Dự báo P90']} />
+        <ReferenceLine x={today} stroke="#9ca3af" strokeDasharray="4 4" label={{ value: 'Hôm nay', fontSize: 10, fill: '#6b7280', position: 'insideTopRight' }} />
+        <Area type="monotone" dataKey="p90" stroke="none" fill="#c7d2fe" fillOpacity={0.5} isAnimationActive={false} connectNulls />
+        <Line type="monotone" dataKey="p50" stroke="#4f46e5" strokeWidth={2} strokeDasharray="5 3" dot={false} isAnimationActive={false} connectNulls />
+        <Line type="monotone" dataKey="actual" stroke="#111827" strokeWidth={2} dot={false} isAnimationActive={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}

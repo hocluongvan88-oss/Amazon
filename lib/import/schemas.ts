@@ -80,6 +80,7 @@ export const SCHEMAS: Record<ImportKind, ImportSchema> = {
     fields: [
       ASIN, SKU,
       { key: 'inventory_qty', label: 'Tồn khả dụng', required: true, type: 'int', aliases: ['available', 'afn fulfillable quantity', 'fulfillable quantity', 'quantity available', 'ton kho'] },
+      { key: 'inventory_inbound', label: 'Đang về (inbound)', required: false, type: 'int', aliases: ['inbound', 'afn inbound shipped quantity', 'inbound quantity', 'dang ve'] },
     ],
   },
   fees: {
