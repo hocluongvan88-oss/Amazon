@@ -1,4 +1,15 @@
 -- ============================================================
+-- ⚠ OBSOLETE (đánh dấu ở Phase 0 / 019): seed này KHÔNG tenant‑aware
+-- (viết trước 004_tenancy_auth). Chạy trên schema hiện tại sẽ thất bại
+-- hoặc tạo dữ liệu không thuộc tenant nào. KHÔNG dùng cho môi trường mới.
+-- Dùng: supabase/002b_seed_tenant.sql (seed theo tenant slug, idempotent).
+-- Khối dưới đây chủ động dừng script để tránh chạy nhầm.
+-- ============================================================
+DO $$ BEGIN
+  RAISE EXCEPTION USING MESSAGE = '002_seed.sql lỗi thời (không tenant). Dùng 002b_seed_tenant.sql. Xoá khối DO này nếu bạn thực sự muốn chạy seed cũ trên schema 001 thuần.';
+END $$;
+
+-- ============================================================
 -- Vexim Amazon Managed Operations — dữ liệu mẫu (pilot)
 -- File 2/2: chạy SAU 001_schema.sql. Chạy lại được (upsert theo asin).
 -- ============================================================

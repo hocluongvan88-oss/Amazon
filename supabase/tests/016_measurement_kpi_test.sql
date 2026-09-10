@@ -22,6 +22,10 @@ BEGIN
     VALUES (u, u::text || '@test.local', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '', now(), now());
   END LOOP;
   INSERT INTO public.tenants (slug, name) VALUES ('t016', 'Test 016') RETURNING id INTO t;
+  -- 019: test này publish bằng UPDATE trực tiếp → tắt yêu cầu bằng chứng cho tenant test (nếu cột đã tồn tại)
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='policy_register' AND column_name='publish_evidence_required') THEN
+    UPDATE public.policy_register SET publish_evidence_required = false WHERE tenant_id = t;
+  END IF;
   INSERT INTO public.tenant_members (tenant_id, user_id, role) VALUES (t, u_op, 'operator'), (t, u_qa, 'owner'), (t, u_view, 'viewer');
   INSERT INTO public.amazon_skus (tenant_id, asin, sku, title, marketplace, current_price, cogs, fee_per_unit, referral_fee_pct, inventory_qty)
   VALUES (t, 'B0TEST0016', 'T-016', 'Bình nước', 'US', 30, 10, 5, 15, 0) RETURNING id INTO sk1;

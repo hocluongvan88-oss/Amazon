@@ -11,6 +11,7 @@ import { Paged } from '@/components/ShowMore';
 import { Card, CardHeader, Badge, EmptyState, Spinner, ErrorBox, btn, input } from '@/components/ui';
 
 // ---------- types ----------
+type PubRec = { id: string; content_version_id: string; kind: 'publish' | 'rollback'; channel: string; performed_at: string; evidence_url: string | null; evidence_note: string | null; verify_status: string };
 type Audit = {
   sku_id: string; asin: string; title: string; facts_verified: number; facts_proposed: number;
   has_title: boolean; has_bullets: boolean; has_description: boolean; has_backend: boolean; has_aplus: boolean;
@@ -295,6 +296,30 @@ function VersionsPanel({ kind, versions, facts, skuId, skuAsin, skuTitle, tenant
   const [reasonFor, setReasonFor] = React.useState<{ id: string; status: string; field: string; title: string } | null>(null);
   const [reason, setReason] = React.useState('');
   const [premium, setPremium] = React.useState(false);
+  const [pubFor, setPubFor] = React.useState<string | null>(null);
+  const [pubUrl, setPubUrl] = React.useState('');
+  const [pubNote, setPubNote] = React.useState('');
+  const [pubRecs, setPubRecs] = React.useState<Record<string, PubRec[]>>({});
+  React.useEffect(() => {
+    const ids = versions.filter((v) => v.status === 'published' || v.status === 'rolled_back' || v.status === 'superseded').map((v) => v.id);
+    if (ids.length === 0) return;
+    (async () => {
+      const { data } = await supabase.from('publish_records').select('id, content_version_id, kind, channel, performed_at, evidence_url, evidence_note, verify_status').in('content_version_id', ids).order('performed_at', { ascending: false }).limit(200);
+      const m: Record<string, PubRec[]> = {};
+      for (const r of (data ?? []) as PubRec[]) (m[r.content_version_id] ||= []).push(r);
+      setPubRecs(m);
+    })();
+  }, [versions]);
+  async function recordPublish(v: Version) {
+    onError(null);
+    const { error } = await supabase.rpc('record_publish', { p_version: v.id, p_evidence_url: pubUrl.trim() || null, p_evidence_note: pubNote.trim() || null });
+    if (error) onError(error.message); else { setPubFor(null); setPubUrl(''); setPubNote(''); onChanged(); }
+  }
+  async function recordRollback(v: Version, why: string) {
+    onError(null);
+    const { error } = await supabase.rpc('record_rollback', { p_version: v.id, p_reason: why });
+    if (error) onError(error.message); else { setReasonFor(null); setReason(''); onChanged(); }
+  }
   const [prevOf, setPrevOf] = React.useState<{ id: string; mobile: boolean } | null>(null);
   React.useEffect(() => {
     if (kind !== 'aplus') return;
@@ -398,10 +423,10 @@ function VersionsPanel({ kind, versions, facts, skuId, skuAsin, skuTitle, tenant
                     <button className={btn.danger} onClick={() => setReasonFor({ id: v.id, status: 'rejected', field: 'reject_reason', title: 'Lý do từ chối' })}>Từ chối…</button>
                   </> : <span className="text-xs text-gray-500">{brandOk ? 'Chờ Brand Approver.' : 'Tenant chưa có Brand Approver – content dừng tại đây.'}</span>)}
                   {v.status === 'approved' && can('content.publish') && (
-                    <button className={btn.success} onClick={() => { if (confirm('Xác nhận bạn ĐÃ cập nhật nội dung này trên Seller Central? Hệ thống chỉ ghi nhận, không tự đẩy lên Amazon.')) transition(v, 'published', { publish_channel: 'seller_central_manual' }); }}>Ghi nhận đã publish</button>
+                    <button className={btn.success} onClick={() => setPubFor(pubFor === v.id ? null : v.id)}>Ghi nhận đã publish (kèm bằng chứng)…</button>
                   )}
                   {v.status === 'published' && can('content.publish') && (
-                    <button className={btn.secondary} onClick={() => setReasonFor({ id: v.id, status: 'rolled_back', field: 'rollback_reason', title: 'Lý do rollback (đã khôi phục bản cũ trên Seller Central?)' })}>Rollback…</button>
+                    <button className={btn.secondary} onClick={() => setReasonFor({ id: v.id, status: 'rolled_back', field: 'rollback_reason', title: 'Lý do rollback (bạn ĐÃ khôi phục bản cũ trên Seller Central)' })}>Rollback…</button>
                   )}
                   {v.status === 'rejected' && can('content.draft') && <button className={btn.ghost} onClick={() => transition(v, 'draft')}>Mở lại</button>}
                 </div>
@@ -409,9 +434,29 @@ function VersionsPanel({ kind, versions, facts, skuId, skuAsin, skuTitle, tenant
                   <div className="px-4 pb-3 flex flex-wrap gap-2 items-center">
                     <span className="text-sm">{reasonFor.title}:</span>
                     <input value={reason} onChange={(e) => setReason(e.target.value)} className={`${input} flex-1 min-w-60`} autoFocus />
-                    <button className={btn.primary} disabled={reason.trim().length < 3} onClick={() => transition(v, reasonFor.status, { [reasonFor.field]: reason.trim() })}>Xác nhận</button>
+                    <button className={btn.primary} disabled={reason.trim().length < 3} onClick={() => reasonFor.status === 'rolled_back' ? recordRollback(v, reason.trim()) : transition(v, reasonFor.status, { [reasonFor.field]: reason.trim() })}>Xác nhận</button>
                     <button className={btn.ghost} onClick={() => setReasonFor(null)}>Huỷ</button>
                   </div>
+                )}
+                {pubFor === v.id && (
+                  <div className="px-4 pb-3 space-y-2 text-sm">
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">Hệ thống KHÔNG tự đẩy lên Amazon. Chỉ ghi nhận sau khi bạn đã cập nhật trên Seller Central — cần URL listing hoặc ghi chú bằng chứng (≥ 5 ký tự).</p>
+                    <input value={pubUrl} onChange={(e) => setPubUrl(e.target.value)} placeholder="URL listing / A+ (https://…)" className={input} />
+                    <input value={pubNote} onChange={(e) => setPubNote(e.target.value)} placeholder="Ghi chú bằng chứng (ai, khi nào, ảnh chụp lưu ở đâu)" className={input} />
+                    <div className="flex gap-2">
+                      <button className={btn.success} disabled={!(pubUrl.trim().startsWith('http') || pubNote.trim().length >= 5)} onClick={() => recordPublish(v)}>Xác nhận đã publish</button>
+                      <button className={btn.ghost} onClick={() => setPubFor(null)}>Huỷ</button>
+                    </div>
+                  </div>
+                )}
+                {(pubRecs[v.id]?.length ?? 0) > 0 && (
+                  <ul className="px-4 pb-3 text-xs text-gray-600 space-y-0.5">
+                    {pubRecs[v.id].map((r) => (
+                      <li key={r.id}>{r.kind === 'publish' ? '✔ Publish' : '↩ Rollback'} · {r.channel === 'manual' ? 'thủ công' : 'API'} · {new Date(r.performed_at).toLocaleString('vi-VN')} · {r.verify_status === 'manual_verified' ? 'xác nhận tay' : r.verify_status}
+                        {r.evidence_url && <> · <a className="text-blue-700 underline" href={r.evidence_url} target="_blank" rel="noreferrer">bằng chứng</a></>}
+                        {r.evidence_note && <> · {r.evidence_note}</>}</li>
+                    ))}
+                  </ul>
                 )}
               </li>
             );

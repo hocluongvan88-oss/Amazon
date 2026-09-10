@@ -137,7 +137,7 @@ Trả lời: **chưa thể kiểm tra đủ 9 nhóm mỗi ngày** — 4 nhóm Mi
 
 ## 5. Database/schema gap analysis
 
-Có: 40+ bảng/view; RLS bật trên mọi bảng nghiệp vụ; 94 function SECURITY DEFINER trong đó 90 có `SET search_path` (4 không — cần rà: `grep -n "SECURITY DEFINER" supabase/*.sql | grep -v search_path`); pg_cron cho snapshot/rules/forecast.
+Có: 40+ bảng/view; RLS bật trên mọi bảng nghiệp vụ; mọi function SECURITY DEFINER đều có `SET search_path` (*đính chính sau audit: 4 dòng grep không khớp là comment, không phải hàm; test 019 kiểm chứng qua `pg_proc`*); pg_cron cho snapshot/rules/forecast.
 
 Thiếu (theo yêu cầu vận hành hằng ngày):
 1. `orders` (order‑level: order_id, status, fulfillment, ship date) — hiện chỉ có tổng hợp ngày.
@@ -193,7 +193,7 @@ Khoảng trống:
 4. **4/9 nhóm vận hành thiếu hoàn toàn** (returns, keywords, promotions, traffic organic) → không thể "vận hành hằng ngày" đúng nghĩa.
 5. **Ingest phía client, không validation server**: người có `data.import` có thể upsert bất kỳ giá trị nào vào `sku_daily_snapshots`/`amazon_skus`.
 6. **Không có test frontend, không observability**, README template → khó vận hành/khắc phục sự cố.
-7. **4 hàm SECURITY DEFINER thiếu `search_path`** — rà và vá (an toàn nhưng cần làm).
+7. ~~4 hàm SECURITY DEFINER thiếu `search_path`~~ — *đính chính: không có; đã thêm assertion trong test 019.*
 8. **`002_seed.sql` lỗi thời** (không tenant) — dễ chạy nhầm ở môi trường mới.
 9. Không xác minh được **pg_cron đang bật** trong project thật (nếu không: không có snapshot/rule/forecast hằng ngày).
 
@@ -207,7 +207,7 @@ Khoảng trống:
 - P0‑C Connector SP‑API đọc (chỉ đọc) cho 3 report: Orders, FBA inventory, Sales & Traffic — worker ngoài Postgres (Supabase Edge Function/cron hoặc dịch vụ nhỏ), ghi vào `ingestion_runs`.
 - P0‑D Schema `orders`, `returns`, `promotions` tối thiểu + CSV import tương ứng (fallback) để đủ 9 nhóm ở mức đọc.
 - P0‑E Validation server‑side cho import (RPC `ingest_*` thay upsert trực tiếp).
-- P0‑F Vá 4 hàm thiếu `search_path`; đánh dấu 002 obsolete; README + `.env.example`; xác nhận pg_cron.
+- P0‑F Assertion `search_path` trong test; đánh dấu 002 obsolete; README + `.env.example`; xác nhận pg_cron.
 
 **P1:**
 - Ads API đọc (campaign/keyword/search term) + `ad_*` tables; ads guardrail rule (tồn kho thấp/content chưa duyệt → cảnh báo giảm ngân sách — vẫn Rec).

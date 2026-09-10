@@ -6,16 +6,19 @@ import { Badge, ErrorBox, btn } from '@/components/ui';
 
 export type Action = {
   id: string; recommendation_id: string | null; asin: string; action_type: string; mode: 'dry_run' | 'canary' | 'live'; connector: string; idempotency_key: string;
+  execution_channel: 'internal_record' | 'manual_seller_central' | 'sp_api'; amazon_applied: boolean; manual_evidence: string | null; manual_confirmed_at: string | null;
   payload: Record<string, unknown>; response: Record<string, unknown> | null; status: string; attempt: number; error: string | null;
   before_value: number | null; after_value: number | null; watch_until: string | null; baseline_units_per_day: number | null; created_at: string; finished_at: string | null;
 };
 export type AutomationPolicy = { automation_live: boolean; canary_asins: string[]; rollback_watch_hours: number; max_live_actions_per_day: number; rollback_units_drop_pct: number };
 
-export const MODE_LABEL: Record<string, string> = { dry_run: 'Chạy thử', canary: 'Canary', live: 'Live' };
+export const MODE_LABEL: Record<string, string> = { dry_run: 'Chạy thử', canary: 'Canary (ghi nhận nội bộ)', live: 'Live (API)' };
+export const CHANNEL_LABEL: Record<string, string> = { internal_record: 'Ghi nhận nội bộ — chưa tác động Amazon', manual_seller_central: 'Đã thực hiện tay trên Seller Central', sp_api: 'Qua SP‑API' };
+export const CHANNEL_CLS: Record<string, string> = { internal_record: 'bg-gray-100 text-gray-700 ring-gray-500/20', manual_seller_central: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', sp_api: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20' };
 export const MODE_CLS: Record<string, string> = { dry_run: 'bg-gray-100 text-gray-700 ring-gray-500/20', canary: 'bg-amber-50 text-amber-800 ring-amber-600/20', live: 'bg-red-50 text-red-700 ring-red-600/20' };
 export const ASTATUS: Record<string, { label: string; cls: string }> = {
   queued: { label: 'Chờ', cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' }, running: { label: 'Đang chạy', cls: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
-  succeeded: { label: 'Thành công', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' }, failed: { label: 'Lỗi', cls: 'bg-red-50 text-red-700 ring-red-600/20' },
+  succeeded: { label: 'Đã ghi nhận', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' }, failed: { label: 'Lỗi', cls: 'bg-red-50 text-red-700 ring-red-600/20' },
   skipped: { label: 'Bỏ qua', cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' }, rolled_back: { label: 'Đã hoàn tác', cls: 'bg-orange-50 text-orange-700 ring-orange-600/20' },
 };
 
@@ -36,9 +39,17 @@ export default function ExecutePanel({ recId, asin, status, canExecute, policy, 
   }, [load]);
 
   async function run(mode: 'dry_run' | 'canary' | 'live') {
-    if (mode !== 'dry_run' && !confirm(`Thực thi ${MODE_LABEL[mode]} cho ${asin}? Lệnh sẽ ghi thật và được theo dõi ${policy?.rollback_watch_hours ?? 48} giờ để tự hoàn tác nếu units giảm mạnh.`)) return;
+    if (mode === 'canary' && !confirm(`Ghi nhận canary cho ${asin}? Hệ thống chỉ cập nhật DB nội bộ — KHÔNG tác động Amazon. Bạn cần thực hiện tay trên Seller Central rồi bấm "Xác nhận đã làm trên Seller Central". Theo dõi ${policy?.rollback_watch_hours ?? 48} giờ để tự hoàn tác nếu units giảm mạnh.`)) return;
+    if (mode === 'live' && !confirm(`Thực thi live qua SP‑API cho ${asin}?`)) return;
     setBusy(mode); setErr(null);
     const { error } = await supabase.rpc('execute_recommendation', { p_rec: recId, p_mode: mode });
+    setBusy(null);
+    if (error) setErr(error.message); else { await load(); onChanged(); }
+  }
+  async function confirmManual(a: Action) {
+    const ev = prompt('Bằng chứng đã thực hiện trên Seller Central (URL hoặc ghi chú ≥ 5 ký tự):'); if (!ev) return;
+    setBusy(a.id); setErr(null);
+    const { error } = await supabase.rpc('confirm_manual_execution', { p_action: a.id, p_evidence: ev });
     setBusy(null);
     if (error) setErr(error.message); else { await load(); onChanged(); }
   }
@@ -66,10 +77,12 @@ export default function ExecutePanel({ recId, asin, status, canExecute, policy, 
         {!liveDone && <>
           <button className={btn.secondary} disabled={busy != null} onClick={() => run('dry_run')}>{busy === 'dry_run' ? '…' : 'Chạy thử (dry‑run)'}</button>
           <button className={btn.primary} disabled={busy != null || blockers.length > 0} onClick={() => run('canary')} title={blockers.join(' · ')}>{busy === 'canary' ? '…' : 'Thực thi canary'}</button>
-          <button className={btn.danger} disabled={busy != null || blockers.length > 0 || !policy?.automation_live} onClick={() => run('live')} title={!policy?.automation_live ? 'Live đang tắt trong Chính sách' : blockers.join(' · ')}>{busy === 'live' ? '…' : 'Thực thi live'}</button>
+          <button className={btn.danger} disabled title="Chưa có kết nối SP‑API — live bị khoá (Phase 0). Canary chỉ ghi nhận nội bộ.">Live (API) — chưa khả dụng</button>
         </>}
+        {liveDone && liveDone.status === 'succeeded' && liveDone.execution_channel === 'internal_record' && <button className={btn.primary} disabled={busy != null} onClick={() => confirmManual(liveDone)}>Xác nhận đã làm trên Seller Central…</button>}
         {liveDone && liveDone.status === 'succeeded' && <button className={btn.secondary} disabled={busy != null} onClick={() => rollback(liveDone)}>Hoàn tác…</button>}
       </div>
+      {liveDone && <p className="text-xs mt-1"><Badge className={CHANNEL_CLS[liveDone.execution_channel]}>{CHANNEL_LABEL[liveDone.execution_channel]}</Badge>{liveDone.manual_evidence && <span className="text-gray-600 ml-2">Bằng chứng: {liveDone.manual_evidence}</span>}</p>}
       {!liveDone && blockers.length > 0 && <p className="text-xs text-gray-500 mt-1">Chưa thể thực thi thật: {blockers.join(' · ')}.</p>}
       {liveDone?.watch_until && <p className="text-xs text-amber-700 mt-1">Đang theo dõi tới {new Date(liveDone.watch_until).toLocaleString('vi-VN')} – tự hoàn tác nếu units/ngày giảm ≥ {policy?.rollback_units_drop_pct ?? 35}% so với 7 ngày trước ({liveDone.baseline_units_per_day ?? '—'} đv/ngày).</p>}
       {err && <div className="mt-2"><ErrorBox message={err} /></div>}
@@ -79,6 +92,7 @@ export default function ExecutePanel({ recId, asin, status, canExecute, policy, 
             <li key={a.id} className="text-xs flex flex-wrap items-center gap-2">
               <Badge className={MODE_CLS[a.mode]}>{MODE_LABEL[a.mode]}</Badge>
               <Badge className={ASTATUS[a.status]?.cls ?? ''}>{ASTATUS[a.status]?.label ?? a.status}</Badge>
+              {a.mode !== 'dry_run' && <Badge className={CHANNEL_CLS[a.execution_channel]}>{a.amazon_applied ? 'Đã áp dụng trên Amazon' : 'Chưa tác động Amazon'}</Badge>}
               <span className="text-gray-600">{new Date(a.created_at).toLocaleString('vi-VN')} · lần {a.attempt}{a.before_value != null && a.after_value != null && ` · ${a.before_value} → ${a.after_value}`}{a.error && <span className="text-red-600"> · {a.error}</span>}</span>
               <button className="text-indigo-600 hover:underline" onClick={() => setShowPayload(showPayload === a.id ? null : a.id)}>{showPayload === a.id ? 'ẩn' : 'payload'}</button>
               {showPayload === a.id && <pre className="w-full overflow-x-auto rounded bg-white border border-gray-200 p-2 text-[11px] text-gray-700">{JSON.stringify({ idempotency_key: a.idempotency_key, payload: a.payload, response: a.response }, null, 2)}</pre>}

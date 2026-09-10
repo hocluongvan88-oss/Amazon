@@ -12,6 +12,7 @@ type Conn = {
   last_other_import: string | null; last_recon_passed: boolean | null; last_recon_at: string | null; coverage_revenue_pct: number;
 };
 
+type Health = { cron_status: 'ok' | 'missing' | 'unknown'; cron_jobs: { name: string; schedule: string; active: boolean }[]; last_snapshot_date: string | null; last_rule_run_at: string | null; sp_api_connected_any: boolean; write_back_enabled: boolean; note: string };
 const daysAgo = (d: string | null) => (d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null);
 const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString('vi-VN') : 'chưa có');
 
@@ -20,11 +21,14 @@ export default function DataConnections({ compact = false }: { compact?: boolean
   const [c, setC] = React.useState<Conn | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
+  const [health, setHealth] = React.useState<Health | null>(null);
 
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const { data } = await supabase.from('v_data_connections').select('*').eq('tenant_id', tenant.id).maybeSingle();
     setC((data as Conn) ?? null);
+    const h = await supabase.rpc('system_health');
+    setHealth((h.data as Health) ?? null);
   }, [tenant]);
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on tenant change
@@ -57,7 +61,9 @@ export default function DataConnections({ compact = false }: { compact?: boolean
           <Row ok={covOk} label="Dữ liệu bán theo ngày" detail={`${c.sales_days_30}/30 ngày · ${Number(c.coverage_revenue_pct).toFixed(0)}% doanh thu có ≥20 ngày (mục tiêu 90%)`} />
           <Row ok={c.ads_days_30 > 0 ? true : null} label="Quảng cáo theo ngày" detail={c.ads_days_30 > 0 ? `${c.ads_days_30}/30 ngày, tới ${fmt(c.last_ads_date)}` : 'chưa nhập (tuỳ chọn)'} />
           <Row ok={c.last_recon_at ? reconOk : null} label="Đối soát Seller Central" detail={c.last_recon_at ? `${c.last_recon_passed ? 'đạt' : 'không đạt'} · ${fmt(c.last_recon_at)}` : 'chưa thực hiện'} />
-          <Row ok={null} label="SP‑API" detail="chưa kết nối – đang dùng CSV export (hợp lệ cho pilot)" />
+          <Row ok={health?.sp_api_connected_any ? true : null} label="SP‑API" detail={health?.sp_api_connected_any ? 'đã kết nối' : 'chưa kết nối – đang dùng CSV export (Phase 2 sẽ kết nối read‑only)'} />
+          <Row ok={health ? (health.cron_status === 'ok' ? true : health.cron_status === 'missing' ? false : null) : null} label="Lịch tự động (pg_cron)" detail={health ? `${health.cron_status === 'ok' ? 'OK' : health.cron_status === 'missing' ? 'THIẾU' : 'KHÔNG XÁC ĐỊNH'} — ${health.note}${health.last_rule_run_at ? ` · rule chạy gần nhất ${new Date(health.last_rule_run_at).toLocaleString('vi-VN')}` : ''}` : 'đang kiểm tra…'} />
+          <Row ok={false} label="Write‑back Amazon" detail="TẮT — mọi thay đổi giá/PO/content đều thực hiện tay trên Seller Central và được ghi nhận kèm bằng chứng" />
         </ul>
         {canWrite && (
           <div className="flex flex-col gap-2 items-start">

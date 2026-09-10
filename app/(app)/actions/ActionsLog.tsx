@@ -7,9 +7,9 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { Card, CardHeader, Badge, EmptyState, Spinner, ErrorBox, btn } from '@/components/ui';
-import { type Action, MODE_LABEL, MODE_CLS, ASTATUS } from '@/components/ExecutePanel';
+import { type Action, MODE_LABEL, MODE_CLS, ASTATUS, CHANNEL_LABEL, CHANNEL_CLS } from '@/components/ExecutePanel';
 
-type Stats = { dry_runs: number; canary_runs: number; live_runs: number; failed: number; rolled_back: number; uncontrolled_writes: number; live_last_24h: number; last_live_at: string | null };
+type Stats = { dry_runs: number; canary_runs: number; live_runs: number; internal_records: number; amazon_applied: number; failed: number; rolled_back: number; uncontrolled_writes: number; live_last_24h: number; last_live_at: string | null };
 type Rollback = { id: string; action_id: string; trigger: string; reason: string; restored_value: number | null; metrics: Record<string, unknown> | null; created_at: string };
 const TYPE_LABEL: Record<string, string> = { price_update: 'Đổi giá', replenish_po: 'Đơn nhập hàng', inventory_note: 'Ghi chú' };
 const TRIGGER_LABEL: Record<string, string> = { manual: 'Thủ công', auto_metric: 'Tự động (metric)', auto_error: 'Tự động (lỗi)' };
@@ -61,12 +61,12 @@ export default function ActionsLog() {
     <>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <Kpi label="Lệnh ngoài kiểm soát" v={stats?.uncontrolled_writes ?? 0} tone={stats?.uncontrolled_writes ? 'red' : 'green'} hint="ghi thật không gắn gợi ý đã duyệt – phải = 0" />
-        <Kpi label="Canary / Live" v={`${stats?.canary_runs ?? 0} / ${stats?.live_runs ?? 0}`} hint={`${stats?.dry_runs ?? 0} lượt chạy thử`} />
+        <Kpi label="Ghi nhận nội bộ / Đã áp dụng Amazon" v={`${stats?.internal_records ?? 0} / ${stats?.amazon_applied ?? 0}`} hint={`${stats?.dry_runs ?? 0} chạy thử · live (API): ${stats?.live_runs ?? 0}`} />
         <Kpi label="Đã hoàn tác" v={stats?.rolled_back ?? 0} hint={`${rollbacks.filter((r) => r.trigger !== 'manual').length} tự động`} tone={stats?.rolled_back ? 'amber' : 'default'} />
         <Kpi label="Đang theo dõi" v={watching.length} hint="trong cửa sổ tự hoàn tác" />
         <Card className="p-4">
           <p className="text-xs text-gray-500">24 giờ qua</p>
-          <p className="text-2xl font-bold mt-1 text-gray-900">{stats?.live_last_24h ?? 0} <span className="text-sm font-medium text-gray-500">lệnh thật</span></p>
+          <p className="text-2xl font-bold mt-1 text-gray-900">{stats?.live_last_24h ?? 0} <span className="text-sm font-medium text-gray-500">lệnh canary/live</span></p>
           {canWrite && <button className={`${btn.ghost} px-0 mt-1`} disabled={busy} onClick={checkRollbacks}>{busy ? '…' : 'Kiểm tra auto‑rollback →'}</button>}
         </Card>
       </div>
@@ -78,7 +78,7 @@ export default function ActionsLog() {
       </div>
 
       <Card>
-        <CardHeader title="Nhật ký lệnh" subtitle="Mỗi lệnh có khoá idempotency – gọi lại không tạo lệnh thứ hai" />
+        <CardHeader title="Nhật ký lệnh" subtitle="Mỗi lệnh có khoá idempotency. Phase 0: mọi lệnh là ghi nhận nội bộ — chỉ 'Đã áp dụng trên Amazon' khi có xác nhận tay kèm bằng chứng hoặc SP‑API." />
         {list.length === 0 ? <EmptyState title="Chưa có lệnh" description="Thực thi từ trang Gợi ý & phê duyệt (gợi ý đã duyệt → Chạy thử → Canary)." /> : (
           <Paged items={list} page={LIMITS.feed} label="lệnh">{(visible) => (<ul className="divide-y divide-gray-100">
             {visible.map((a) => { const rb = rbByAction[a.id]; return (
@@ -89,7 +89,8 @@ export default function ActionsLog() {
                   <span className="text-sm font-medium text-gray-900">{TYPE_LABEL[a.action_type] ?? a.action_type}</span>
                   <span className="font-mono text-xs text-gray-500">{a.asin}</span>
                   {a.before_value != null && a.after_value != null && <span className="text-sm tabular-nums">{a.before_value} → <b>{a.after_value}</b></span>}
-                  <span className="text-xs text-gray-400">{new Date(a.created_at).toLocaleString('vi-VN')} · {a.connector} · lần {a.attempt}</span>
+                  {a.mode !== 'dry_run' && <Badge className={CHANNEL_CLS[a.execution_channel]}>{CHANNEL_LABEL[a.execution_channel]}</Badge>}
+                  <span className="text-xs text-gray-400">{new Date(a.created_at).toLocaleString('vi-VN')} · lần {a.attempt}</span>
                   {a.watch_until && new Date(a.watch_until) > new Date() && <Badge className="bg-amber-50 text-amber-800 ring-amber-600/20">theo dõi tới {new Date(a.watch_until).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Badge>}
                   <span className="ml-auto flex gap-2">
                     {a.recommendation_id && <Link href={`/recommendations?asin=${a.asin}`} className={btn.ghost}>Gợi ý</Link>}
@@ -98,6 +99,7 @@ export default function ActionsLog() {
                   </span>
                 </div>
                 {a.error && <p className="text-xs text-red-600 mt-1">{a.error}</p>}
+                {a.manual_evidence && <p className="text-xs text-emerald-700 mt-1">Bằng chứng Seller Central: {a.manual_evidence} · {a.manual_confirmed_at && new Date(a.manual_confirmed_at).toLocaleString('vi-VN')}</p>}
                 {rb && <p className="text-xs text-orange-700 mt-1">Hoàn tác {TRIGGER_LABEL[rb.trigger]} · {new Date(rb.created_at).toLocaleString('vi-VN')} · {rb.reason}</p>}
                 {open === a.id && <pre className="mt-2 overflow-x-auto rounded bg-gray-50 border border-gray-200 p-2 text-[11px] text-gray-700">{JSON.stringify({ idempotency_key: a.idempotency_key, payload: a.payload, response: a.response, baseline_units_per_day: a.baseline_units_per_day }, null, 2)}</pre>}
               </li>

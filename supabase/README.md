@@ -5,7 +5,7 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 | Thứ tự | File | Nội dung | Khi nào |
 |---|---|---|---|
 | 1 | `001_schema.sql` | Bảng, index, trigger, RLS cơ bản, view | Bắt buộc |
-| 2 | `002_seed.sql` | 8 SKU mẫu + review + gợi ý + ngoại lệ | Khuyến nghị cho pilot/demo |
+| 2 | `002_seed.sql` | **LỖI THỜI** (không tenant, tự dừng khi chạy). Dùng `002b_seed_tenant.sql` (seed demo theo tenant slug, idempotent) | Tuỳ chọn |
 | 3 | `004_tenancy_auth.sql` | **Sprint 0**: tenants, `tenant_id` mọi bảng, RLS theo tenant, guard chuyển trạng thái theo cấp duyệt, audit trigger, gỡ quyền `anon` | Bắt buộc trước khi cho người dùng thật vào |
 | 5 | `006_snapshots_metrics.sql` | **Tuần 3‑4**: `sku_daily_snapshots` (grain SKU×ngày), `capture_daily_snapshots` + lịch pg_cron 03:00 UTC, `sku_metrics()` & `tenant_daily()` (metric layer), `refresh_sku_rolling_from_snapshots`, `reconciliation_checks` + `run_reconciliation`, view `v_data_connections` | Bắt buộc |
 | 6 | `007_risk_rules.sql` | **Tuần 5‑6**: `risk_score`/`risk_components`/`risk_history`, `compute_risk_score`, rule engine `run_rules` (8 rule, dedupe/cooldown/auto‑resolve, pg_cron 03:30 UTC), SLA ngoại lệ (`due_at`, `assigned_to`, `snoozed_until`, feedback), `rule_runs`, views `v_exception_queue`/`v_rule_precision`, `profit_bridge()` | Bắt buộc |
@@ -97,9 +97,13 @@ Xem `.env.example`. Thêm vào `.env.local` (local) và Vercel → Settings → 
 ## Sau khi chạy 016
 Chạy `supabase/tests/016_measurement_kpi_test.sql` → FAIL = 0. UI: trang **Đo lường** có thêm 2 thẻ KPI Content / KPI chất lượng AI và **Sổ đo lường** (nút "Đo lại" gọi `measure_all` + `finalize_measurements`).
 | 17 | `018_aplus_fidelity.sql` | **P1 – A+ bám cấu trúc Amazon**: `aplus_module_specs` (17 module Standard/Premium đúng tên & giới hạn ký tự/ảnh của A+ Content Manager), `policy_register.aplus_premium_enabled` (Standard ≤ 5 module, Premium ≤ 7), `aplus_upgrade_body` (nâng body header/body cũ), `check_aplus_modules_v2` (kiểm tra đệ quy từng trường theo spec, alt‑text, giá/khuyến mãi, link ngoài, claim tuyệt đối, so sánh chỉ ASIN cùng tenant), `build_aplus_from_template` v2 (điền `{fact:key}` trong mọi trường lồng nhau), 4 template toàn cục viết lại trên module thật | Bắt buộc |
+| 18 | `019_phase0_truthfulness.sql` | **Phase 0 – Truthfulness**: `actions.execution_channel` (internal_record / manual_seller_central / sp_api) + `amazon_applied`; bỏ `submission_id` giả; `execute_recommendation` v3 khoá live khi chưa có sp_api connected; `confirm_manual_execution` (xác nhận đã làm tay kèm bằng chứng); `publish_records` + `record_publish/record_rollback` + policy `publish_evidence_required` (guard chặn UPDATE thẳng sang published); `system_health()` (pg_cron ok/missing/unknown) | Bắt buộc |
 
 ## Sau khi chạy 017
 Chạy `supabase/tests/017_aplus_cvr_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → "Draft mới" có ô **Template A+**; nút "Tác động" của bản published hiện thêm **biểu đồ CVR trước/sau** kèm đường đối chứng.
 
 ## Sau khi chạy 018
 Chạy `supabase/tests/018_aplus_fidelity_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → editor theo **module Amazon** (chọn module, thứ tự, đếm ký tự theo giới hạn thật, brief ảnh + alt‑text, bảng specs/so sánh), **Preview desktop/mobile**, và nút **⇩ Gói bàn giao Seller Central (.md)** trên bản approved/published để copy 1:1 vào A+ Content Manager. Bật Premium A+: `UPDATE policy_register SET aplus_premium_enabled = true WHERE tenant_id = ...`.
+
+## Sau khi chạy 019
+Chạy `supabase/tests/019_phase0_test.sql` → FAIL = 0. Lưu ý: test 013/016/017 publish bằng UPDATE trực tiếp nên đã được cập nhật để tắt `publish_evidence_required` cho tenant test. UI: Lệnh thực thi hiển thị kênh ("Ghi nhận nội bộ — chưa tác động Amazon" / "Đã thực hiện tay trên Seller Central"), nút Live bị khoá; Content Studio: "Ghi nhận đã publish (kèm bằng chứng)"; Tổng quan → Kết nối dữ liệu: trạng thái pg_cron & Write‑back TẮT.
