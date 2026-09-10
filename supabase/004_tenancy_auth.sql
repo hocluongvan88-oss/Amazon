@@ -301,10 +301,11 @@ CREATE POLICY audit_select ON public.audit_log FOR SELECT TO authenticated
 
 -- Gỡ quyền anon (nội dung 003)
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
-REVOKE SELECT ON public.v_sku_overview FROM anon;
 
 -- View v_sku_overview: thêm tenant_id
-CREATE OR REPLACE VIEW public.v_sku_overview WITH (security_invoker = true) AS
+-- (CREATE OR REPLACE không cho đổi thứ tự cột → phải DROP rồi tạo lại)
+DROP VIEW IF EXISTS public.v_sku_overview;
+CREATE VIEW public.v_sku_overview WITH (security_invoker = true) AS
 SELECT
   s.id, s.tenant_id, s.asin, s.sku, s.title, s.marketplace,
   s.current_price, s.cogs, s.contribution_profit, s.sales_last_30d,
