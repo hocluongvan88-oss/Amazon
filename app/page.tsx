@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React from 'react';
 
 /*
@@ -42,12 +43,12 @@ export default function DashboardPage() {
       <header className="max-w-7xl mx-auto mb-6 flex items-center justify-between flex-col sm:flex-row gap-4">
         <h1 className="text-3xl font-bold text-gray-900">Bảng điều khiển Vexim</h1>
         <nav className="flex items-center gap-3">
-          <a href="/recommendations" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
+          <Link href="/recommendations" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
             Xem các gợi ý
-          </a>
-          <a href="/add-sku" className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
+          </Link>
+          <Link href="/add-sku" className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition">
             Thêm SKU mới
-          </a>
+          </Link>
         </nav>
       </header>
 
@@ -124,7 +125,7 @@ export default function DashboardPage() {
             {skus.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                  Chưa có ASIN. <a href="/add-sku" className="text-blue-600 underline">Thêm SKU đầu tiên</a>
+                  Chưa có ASIN. <Link href="/add-sku" className="text-blue-600 underline">Thêm SKU đầu tiên</Link>
                 </td>
               </tr>
             )}

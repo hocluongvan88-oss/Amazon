@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { Metadata } from 'next';
 import AddSkuForm from './AddSkuForm';
 
@@ -12,9 +13,9 @@ export default function AddSkuPage() {
       <div className="max-w-2xl mx-auto px-4 space-y-6">
         <h1 className="text-3xl font-bold text-gray-900">Thêm SKU mới</h1>
         <AddSkuForm />
-        <a href="/" className="text-sm text-blue-600 underline">
+        <Link href="/" className="text-sm text-blue-600 underline">
           Quay về bảng điều khiển
-        </a>
+        </Link>
       </div>
     </section>
   );

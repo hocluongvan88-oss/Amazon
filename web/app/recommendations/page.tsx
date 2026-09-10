@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { Metadata } from 'next';
 import RecommendationsList from './RecommendationsList';
 
@@ -12,9 +13,9 @@ export default function RecommendationsPage() {
       <div className="max-w-7xl mx-auto px-4">
         <header className="mb-6 flex items-center justify-between flex-col sm:flex-row gap-4">
           <h1 className="text-3xl font-bold text-gray-900">Danh sách gợi ý</h1>
-          <a href="/" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
+          <Link href="/" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
             Quay về bảng điều khiển
-          </a>
+          </Link>
         </header>
         <RecommendationsList />
       </div>
