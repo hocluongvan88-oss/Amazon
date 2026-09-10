@@ -101,6 +101,7 @@ Chạy `supabase/tests/016_measurement_kpi_test.sql` → FAIL = 0. UI: trang **�
 | 19 | `020_canonical_data.sql` | **Phase 1a – Canonical data**: bảng `orders`, `returns`, `ad_campaigns/ad_groups/ad_keywords/ad_daily`, `search_terms`, `promotions`, `traffic_daily`, `inventory_ledger` (tenant + marketplace, natural key, `source_record_hash`, RLS chỉ SELECT); 4 feed mới trong `data_feeds`; `derive_snapshots()` canonical → `sku_daily_snapshots`; `v_data_freshness` đọc ngày dữ liệu từ bảng canonical | Bắt buộc |
 | 20 | `021_ingestion.sql` | **Phase 1b – Server-side ingestion**: `ingest_feed_specs` (hợp đồng schema v1, CSV = API), staging `ingest_batches/ingest_rows`, RPC `ingest_open` → `ingest_add_rows` → `ingest_dry_run` → `ingest_commit` (validate từng dòng, idempotent theo file_hash + row hash, 1 dòng lỗi không mất batch, ghi `ingestion_runs`, derive snapshots). **Xoá policy `snap_write`** — trình duyệt không còn ghi `sku_daily_snapshots` | Bắt buộc |
 | 21 | `022_close_direct_writes.sql` | **Phase 1c – Đóng đường ghi trực tiếp**: 6 feed cũ (catalog/cogs/sales/inventory/fees/reviews) đi qua `ingest_*`; `sku_save()` (RPC duy nhất thêm/sửa/lưu trữ SKU + COGS, kiểm `sku.write`/`cogs.write`); `run_reconciliation_auto()` orders ↔ traffic_daily theo ASIN; **xoá policy ghi** trên `amazon_skus`, `raw_reviews`, `cogs_history`, `import_jobs` | Bắt buộc |
+| 22 | `023_connectors_sync.sql` | **Phase 2 – Connector chỉ đọc**: `sync_jobs` (hàng đợi, retry/backoff, lease), `enqueue_sync`/`backfill_sync(1|7|28)`/`schedule_sync_jobs`, worker RPC (`claim_sync_job`, `finish_sync_job`, `set_source_status` — chỉ service_role), secret trong Vault (`connector_secret_*`), `ingest_open` nhận `p_source`, `v_sync_jobs`, `connector_health()`, `install_sync_cron()`. Edge Function: `supabase/functions/amazon-sync` | Bắt buộc |
 
 ## Sau khi chạy 017
 Chạy `supabase/tests/017_aplus_cvr_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → "Draft mới" có ô **Template A+**; nút "Tác động" của bản published hiện thêm **biểu đồ CVR trước/sau** kèm đường đối chứng.
@@ -116,3 +117,6 @@ Chạy `supabase/tests/021_ingestion_test.sql` → FAIL = 0. UI: Nhập dữ li�
 
 ## Sau khi chạy 022
 Chạy `supabase/tests/022_close_direct_writes_test.sql` → FAIL = 0. Từ đây **client không còn INSERT/UPDATE bảng dữ liệu nào** (chỉ SELECT + RPC). UI: mọi loại nhập đều qua Kiểm tra → Ghi; Thêm SKU / sửa SKU dùng `sku_save`; Đối soát có nút **Đối soát tự động: Đơn hàng ↔ Business report**.
+
+## Sau khi chạy 023
+Chạy `supabase/tests/023_connectors_sync_test.sql` → FAIL = 0. Deploy Edge Function và cài cron theo `docs/RUNBOOK_CONNECTORS.md`. UI: Kết nối dữ liệu → thanh trạng thái (pg_cron / worker / Vault / Write‑back TẮT), nút Nhập credential → Vault, Thử kết nối, Backfill 1/7/28 ngày, bảng Job đồng bộ API.

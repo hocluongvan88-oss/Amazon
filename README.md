@@ -34,3 +34,6 @@ Vercel, framework Next.js, env `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE
 
 ## Tài liệu
 `docs/OPERATING_GOVERNANCE_v0.1.md` · `docs/PRODUCT_SCOPE_v0.1.md` · `docs/CONNECTOR_CONTRACT_v0.1.md` · `docs/AUDIT_HIEN_TRANG_2026-09-10.md`
+
+## Connector Amazon (Phase 2)
+Xem `docs/RUNBOOK_CONNECTORS.md` — deploy Edge Function `amazon-sync`, lưu credential vào Vault, backfill 1/7/28 ngày. Chỉ đọc; không write‑back.

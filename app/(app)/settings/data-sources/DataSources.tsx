@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { Card, CardHeader, Badge, Spinner, ErrorBox, EmptyState, btn, input } from '@/components/ui';
+import { ConnectorPanel, HealthStrip, SyncJobsTable } from './ConnectorPanel';
 
 type Freshness = {
   feed_key: string; domain: string; label: string; sla_hours: number; settlement_lag_days: number; required_for_readiness: boolean;
   last_success_at: string | null; last_run_status: string | null; last_rows_ok: number | null; last_rows_failed: number | null;
   last_data_date: string | null; expected_through: string; age_hours: number | null; status: 'fresh' | 'stale' | 'missing'; source_kind: string | null;
 };
-type Source = { id: string; kind: 'csv_manual' | 'sp_api' | 'ads_api'; name: string; enabled: boolean; feeds: string[]; config: Record<string, unknown>; status: string; last_run_at: string | null; last_error: string | null; credential_ref: string | null };
+type Source = { id: string; tenant_id: string; kind: 'csv_manual' | 'sp_api' | 'ads_api'; name: string; enabled: boolean; feeds: string[]; config: Record<string, unknown>; status: string; last_run_at: string | null; last_error: string | null; credential_ref: string | null };
 type Run = { id: string; feed_key: string; status: string; triggered_by: string; rows_ok: number; rows_failed: number; external_ref: string | null; finished_at: string | null; created_at: string; window_start: string | null; window_end: string | null };
 
 const ST: Record<string, { label: string; cls: string }> = {
@@ -21,7 +22,7 @@ const ST: Record<string, { label: string; cls: string }> = {
 };
 const RUN_ST: Record<string, string> = { succeeded: 'text-emerald-700', partial: 'text-amber-700', failed: 'text-red-700', queued: 'text-gray-500', running: 'text-sky-700', cancelled: 'text-gray-500' };
 const KIND: Record<string, string> = { csv_manual: 'CSV thủ công', sp_api: 'Amazon SP‑API', ads_api: 'Amazon Ads API' };
-const SRC_ST: Record<string, string> = { connected: 'Đã kết nối', not_connected: 'Chưa kết nối (chờ P2)', error: 'Lỗi', disabled: 'Tắt' };
+const SRC_ST: Record<string, string> = { connected: 'Đã kết nối', not_connected: 'Chưa kết nối', error: 'Lỗi', disabled: 'Tắt' };
 const DOMAIN: Record<string, string> = { data: 'Danh mục', finance: 'Tài chính', inventory: 'Tồn kho', revenue: 'Doanh thu', ads: 'Quảng cáo', voc: 'VoC' };
 const fmt = (s: string | null) => (s ? new Date(s).toLocaleString('vi-VN', { hour12: false }) : '—');
 const ago = (h: number | null) => (h == null ? '—' : h < 48 ? `${Math.round(h)} giờ` : `${Math.round(h / 24)} ngày`);
@@ -36,6 +37,8 @@ export default function DataSources() {
   const [form, setForm] = React.useState<{ kind: 'sp_api' | 'ads_api'; name: string; marketplace: string; cred: string; feeds: string[] } | null>(null);
   const [saving, setSaving] = React.useState(false);
   const canEdit = can('policy.edit');
+  const canImport = can('data.import');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   const load = React.useCallback(async () => {
     if (!tenant) return;
@@ -60,13 +63,14 @@ export default function DataSources() {
     setSaving(true);
     const { error } = await supabase.rpc('upsert_data_source', {
       t: tenant.id, p_kind: form.kind, p_name: form.name || KIND[form.kind], p_feeds: form.feeds,
-      p_config: form.kind === 'sp_api' ? { marketplace_id: form.marketplace } : { ads_profile_id: form.marketplace },
-      p_credential_ref: form.cred || null, p_enabled: true,
+      p_config: form.kind === 'sp_api' ? (form.marketplace ? { marketplace_id: form.marketplace } : {}) : (form.marketplace ? { ads_profile_id: form.marketplace } : {}),
+      p_credential_ref: null, p_enabled: true,
     });
     setSaving(false);
     if (error) { alert(error.message); return; }
     setForm(null); void load();
   };
+  const changed = () => { setRefreshKey((k) => k + 1); void load(); };
 
   if (loading) return <Spinner />;
   if (err) return <ErrorBox message={err} />;
@@ -107,17 +111,18 @@ export default function DataSources() {
       </Card>
 
       <Card>
-        <CardHeader title="Nguồn kết nối" subtitle="Secret không bao giờ lưu ở đây — chỉ tên khoá trong Vault (credential_ref). Connector SP‑API/Ads API thực thi ở P2; đăng ký trước để feed/freshness sẵn sàng."
-          action={canEdit && !form ? <button className={btn.secondary} onClick={() => setForm({ kind: 'sp_api', name: '', marketplace: 'ATVPDKIKX0DER', cred: '', feeds: ['orders_daily', 'inventory', 'sales_traffic_daily'] })}>+ Đăng ký nguồn API</button> : undefined} />
+        <CardHeader title="Nguồn kết nối (chỉ đọc)" subtitle="Secret chỉ nằm trong Supabase Vault; bảng dữ liệu chỉ giữ tên khoá (credential_ref). Worker Edge Function kéo báo cáo Amazon và ghi qua cùng hợp đồng với CSV. Không có write‑back."
+          action={canEdit && !form ? <button className={btn.secondary} onClick={() => setForm({ kind: 'sp_api', name: '', marketplace: '', cred: '', feeds: ['orders_daily', 'inventory_ledger', 'sales_traffic_daily', 'returns'] })}>+ Đăng ký nguồn API</button> : undefined} />
         <div className="px-5 py-4">
+        <div className="mb-3"><HealthStrip tenantId={tenant!.id} refreshKey={refreshKey} /></div>
         {form && (
           <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 grid gap-2 sm:grid-cols-2 text-sm">
-            <label>Loại<select className={input} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as 'sp_api' | 'ads_api', feeds: e.target.value === 'ads_api' ? ['ads_daily'] : ['orders_daily', 'inventory', 'sales_traffic_daily'] })}><option value="sp_api">Amazon SP‑API</option><option value="ads_api">Amazon Ads API</option></select></label>
+            <label>Loại<select className={input} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as 'sp_api' | 'ads_api', feeds: e.target.value === 'ads_api' ? ['ads_daily', 'search_terms'] : ['orders_daily', 'inventory_ledger', 'sales_traffic_daily', 'returns'] })}><option value="sp_api">Amazon SP‑API</option><option value="ads_api">Amazon Ads API</option></select></label>
             <label>Tên<input className={input} value={form.name} placeholder={KIND[form.kind]} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-            <label>{form.kind === 'sp_api' ? 'Marketplace ID' : 'Ads profile ID'}<input className={input} value={form.marketplace} onChange={(e) => setForm({ ...form, marketplace: e.target.value })} /></label>
-            <label>credential_ref (tên khoá Vault)<input className={input} value={form.cred} placeholder="vault:spapi_us" onChange={(e) => setForm({ ...form, cred: e.target.value })} /></label>
+            <label>{form.kind === 'sp_api' ? 'Marketplace ID (để trống = theo marketplace tenant)' : 'Ads profile ID (để trống = chọn khi thử kết nối)'}<input className={input} value={form.marketplace} onChange={(e) => setForm({ ...form, marketplace: e.target.value })} /></label>
+            <p className="text-xs text-gray-500 self-end">Credential nhập ở bước sau (sau khi lưu nguồn), đi thẳng vào Vault.</p>
             <div className="sm:col-span-2 flex flex-wrap gap-3">
-              {fresh.map((f) => (
+              {fresh.filter((f) => (form.kind === 'ads_api' ? ['ads_daily', 'search_terms'] : ['orders_daily', 'inventory_ledger', 'sales_traffic_daily', 'returns']).includes(f.feed_key)).map((f) => (
                 <label key={f.feed_key} className="flex items-center gap-1 text-xs"><input type="checkbox" checked={form.feeds.includes(f.feed_key)} onChange={(e) => setForm({ ...form, feeds: e.target.checked ? [...form.feeds, f.feed_key] : form.feeds.filter((k) => k !== f.feed_key) })} />{f.label}</label>
               ))}
             </div>
@@ -135,11 +140,17 @@ export default function DataSources() {
                 <span className="text-gray-500 text-xs">lần cuối: {fmt(s.last_run_at)}</span>
                 {s.credential_ref && <span className="text-gray-400 text-xs font-mono">{s.credential_ref}</span>}
                 {s.last_error && <span className="text-red-600 text-xs">{s.last_error}</span>}
+                <ConnectorPanel source={s} feeds={fresh} canEdit={canEdit} canImport={canImport} onChanged={changed} />
               </li>
             ))}
           </ul>
         )}
         </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Job đồng bộ API" subtitle="Mỗi job = 1 feed × 1 cửa sổ ngày. Lỗi được phân loại (xác thực / role Amazon / rate limit / dữ liệu) và tự thử lại với backoff; job không bao giờ ghi 0 khi Amazon không trả dữ liệu." />
+        <SyncJobsTable tenantId={tenant!.id} refreshKey={refreshKey} canImport={canImport} />
       </Card>
 
       <Card>
