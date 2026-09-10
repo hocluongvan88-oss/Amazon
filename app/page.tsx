@@ -1,16 +1,13 @@
+'use client';
+
+import React from 'react';
+
 /*
  * Trangdashboard Vexim Amazon Managed Operations
  * Hiện đại, thân thiện người dùng, bố cục rõ ràng – 100% tiếng Việt.
  */
 
 import { supabase } from '@/lib/supabase/client';
-
-export async function metadata() {
-  return {
-    title: 'Vexim – Bảng điều khiển vận hành Amazon',
-    description: 'Pilot dashboard: lợi nhuận góp phần, tồn kho & gợi ý',
-  };
-}
 
 export default function DashboardPage() {
   const [skus, setSkus] = React.useState<any[]>([]);
