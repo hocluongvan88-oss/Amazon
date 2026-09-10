@@ -33,6 +33,8 @@ export default function ImportWizard() {
     void loadJobs();
   }, [loadJobs]);
 
+  const [dragOver, setDragOver] = React.useState(false);
+
   function onFile(f: File | undefined) {
     if (!f) return;
     f.text().then((text) => {
@@ -221,10 +223,34 @@ export default function ImportWizard() {
         <Card>
           <CardHeader title="2. Chọn file & khớp cột" subtitle="Hệ thống tự đoán cột theo tên trong export của Seller Central; bạn có thể sửa." />
           <div className="p-5 space-y-4">
-            <input type="file" accept=".csv,.txt,.tsv" onChange={(e) => onFile(e.target.files?.[0])} className="block text-sm" />
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); onFile(e.dataTransfer.files?.[0]); }}
+              className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors ${dragOver ? 'border-slate-900 bg-slate-50' : parsed ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-300 bg-gray-50 hover:border-slate-400 hover:bg-white'}`}
+            >
+              <input type="file" accept=".csv,.txt,.tsv" className="sr-only" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={parsed ? 'text-emerald-600' : 'text-gray-400'} aria-hidden>
+                {parsed
+                  ? <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="m9 15 2 2 4-4" /></>
+                  : <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" /></>}
+              </svg>
+              {parsed ? (
+                <>
+                  <p className="text-sm font-medium text-gray-900">{parsed.filename}</p>
+                  <p className="text-xs text-gray-600">{parsed.rows.length} dòng · {parsed.headers.length} cột · <span className="underline">chọn file khác</span></p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-gray-900">Kéo thả file CSV vào đây</p>
+                  <p className="text-xs text-gray-500">hoặc</p>
+                  <span className={btn.secondary}>Chọn file từ máy</span>
+                  <p className="text-xs text-gray-500 mt-1">Hỗ trợ .csv, .tsv, .txt (export từ Seller Central)</p>
+                </>
+              )}
+            </label>
             {parsed && (
               <>
-                <p className="text-sm text-gray-600">{parsed.filename} · {parsed.rows.length} dòng · {parsed.headers.length} cột</p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {schema.fields.map((f) => <MapRow key={f.key} f={f} headers={parsed.headers} value={map[f.key] ?? ''} onChange={(v) => setMap({ ...map, [f.key]: v })} />)}
                 </div>
