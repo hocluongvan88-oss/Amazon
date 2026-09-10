@@ -6,7 +6,7 @@ import { useTenant } from '@/lib/tenant';
 import { usd, num } from '@/lib/format';
 import { Card, CardHeader, Badge, btn, input } from '@/components/ui';
 
-type Check = { id: string; period_start: string; period_end: string; sc_revenue: number; sc_units: number; sys_revenue: number; sys_units: number; revenue_diff_pct: number | null; units_diff_pct: number | null; tolerance_pct: number; passed: boolean; created_at: string; note: string | null };
+type Check = { id: string; period_start: string; period_end: string; sc_revenue: number; sc_units: number; sys_revenue: number; sys_units: number; revenue_diff_pct: number | null; units_diff_pct: number | null; tolerance_pct: number; passed: boolean; created_at: string; note: string | null; kind?: 'manual_sc' | 'orders_vs_traffic'; detail?: { days_orders: number; days_traffic: number; days_expected: number; asin_mismatches: { asin: string; orders_units: number; traffic_units: number; diff: number }[] } | null };
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -32,6 +32,14 @@ export default function Reconciliation() {
     void load();
   }, [load]);
 
+  async function runAuto() {
+    if (!tenant) return;
+    setBusy(true); setErr(null);
+    const { error } = await supabase.rpc('run_reconciliation_auto', { t: tenant.id, p_start: start, p_end: end });
+    setBusy(false);
+    if (error) setErr(error.message); else load();
+  }
+
   async function run(e: React.FormEvent) {
     e.preventDefault();
     if (!tenant) return;
@@ -55,7 +63,12 @@ export default function Reconciliation() {
             </div>
             <L label="Ghi chú"><input value={note} onChange={(e) => setNote(e.target.value)} className={input} placeholder="VD: Business Report 1–30/8, tải 10/9" /></L>
             {err && <p className="text-sm text-red-600">{err}</p>}
-            <button className={btn.primary} disabled={busy}>{busy ? 'Đang so…' : 'Chạy đối soát'}</button>
+            <div className="flex flex-wrap gap-2">
+              <button className={btn.primary} disabled={busy}>{busy ? 'Đang so…' : 'Chạy đối soát (nhập tay)'}</button>
+              <button type="button" className={btn.secondary} disabled={busy} onClick={runAuto} title="So tổng đơn vị/doanh thu từ feed Đơn hàng với feed Sessions & chuyển đổi (Business report) theo cùng khoảng ngày">
+                Đối soát tự động: Đơn hàng ↔ Business report
+              </button>
+            </div>
             <p className="text-xs text-gray-500">Mẹo: dùng khoảng ≥ 7 ngày để triệt tiêu lệch múi giờ giữa file đơn hàng (UTC) và báo cáo.</p>
           </form>
         )}
@@ -69,9 +82,13 @@ export default function Reconciliation() {
                     <span className="text-gray-900">{new Date(c.period_start).toLocaleDateString('vi-VN')} – {new Date(c.period_end).toLocaleDateString('vi-VN')}</span>
                     {c.passed ? <Badge className="bg-emerald-50 text-emerald-700 ring-emerald-600/20">Đạt</Badge> : <Badge className="bg-red-50 text-red-700 ring-red-600/20">Lệch</Badge>}
                   </div>
+                  {c.kind === 'orders_vs_traffic' && <p className="text-[11px] text-indigo-700">Tự động · orders {c.detail?.days_orders ?? '?'} ngày / traffic {c.detail?.days_traffic ?? '?'} ngày / kỳ vọng {c.detail?.days_expected ?? '?'} ngày</p>}
                   <p className="text-xs text-gray-500">
-                    DT: hệ thống {usd(c.sys_revenue, 0)} vs SC {usd(c.sc_revenue, 0)} ({c.revenue_diff_pct ?? '—'}%) · ĐV: {num(c.sys_units)} vs {num(c.sc_units)} ({c.units_diff_pct ?? '—'}%) · tol ±{c.tolerance_pct}%
+                    DT: {c.kind === 'orders_vs_traffic' ? 'đơn hàng' : 'hệ thống'} {usd(c.sys_revenue, 0)} vs {c.kind === 'orders_vs_traffic' ? 'Business report' : 'SC'} {usd(c.sc_revenue, 0)} ({c.revenue_diff_pct ?? '—'}%) · ĐV: {num(c.sys_units)} vs {num(c.sc_units)} ({c.units_diff_pct ?? '—'}%) · tol ±{c.tolerance_pct}%
                   </p>
+                  {c.kind === 'orders_vs_traffic' && (c.detail?.asin_mismatches?.length ?? 0) > 0 && (
+                    <p className="text-[11px] text-amber-700 mt-0.5">ASIN lệch: {c.detail!.asin_mismatches.slice(0, 5).map((m) => `${m.asin} (${m.diff > 0 ? '+' : ''}${m.diff})`).join(', ')}{c.detail!.asin_mismatches.length > 5 ? '…' : ''}</p>
+                  )}
                 </li>
               ))}
             </ul>

@@ -3,13 +3,13 @@ import { normalizeHeader } from './csv';
 export type ImportKind = 'catalog' | 'cogs' | 'sales' | 'inventory' | 'fees' | 'orders' | 'ads' | 'reviews' | 'traffic' | 'returns' | 'search_terms' | 'promotions' | 'inventory_ledger';
 
 /** Feed đi qua ingest server-side (021): trình duyệt chỉ gửi dòng thô; server validate/dry-run/commit */
-export const SERVER_KINDS: ReadonlySet<ImportKind> = new Set<ImportKind>(['orders', 'ads', 'traffic', 'returns', 'search_terms', 'promotions', 'inventory_ledger']);
+export const SERVER_KINDS: ReadonlySet<ImportKind> = new Set<ImportKind>(['orders', 'ads', 'traffic', 'returns', 'search_terms', 'promotions', 'inventory_ledger', 'catalog', 'cogs', 'sales', 'inventory', 'fees', 'reviews']);
 
 export type FieldDef = {
   key: string;
   label: string;
   required?: boolean;
-  type: 'text' | 'number' | 'int' | 'date' | 'percent' | 'list';
+  type: 'text' | 'number' | 'int' | 'date' | 'percent' | 'list' | 'bool';
   /** Tên cột thường gặp trong file Seller Central / nội bộ, đã normalize */
   aliases: string[];
   hint?: string;
@@ -269,7 +269,7 @@ export const SCHEMAS: Record<ImportKind, ImportSchema> = {
       { key: 'body', label: 'Nội dung', required: true, type: 'text', aliases: ['body', 'review', 'review text', 'content', 'comment', 'noi dung'] },
       { key: 'reviewed_at', label: 'Ngày review', required: false, type: 'date', aliases: ['date', 'review date', 'reviewed at', 'ngay'] },
       { key: 'reviewer_id', label: 'Mã người review', required: false, type: 'text', aliases: ['reviewer id', 'reviewer', 'profile id', 'author'] },
-      { key: 'verified_purchase', label: 'Đã mua (verified)', required: false, type: 'text', aliases: ['verified', 'verified purchase'] },
+      { key: 'verified_purchase', label: 'Đã mua (verified)', required: false, type: 'bool', aliases: ['verified', 'verified purchase'] },
     ],
   },
 };

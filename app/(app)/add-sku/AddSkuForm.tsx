@@ -41,14 +41,15 @@ export default function AddSkuForm() {
     e.preventDefault();
     if (!tenant) return;
     setError(null); setSaving(true);
-    const { error: e2 } = await supabase.from('amazon_skus').insert({
-      tenant_id: tenant.id, marketplace: tenant.marketplace,
-      asin: f.asin.trim().toUpperCase(), sku: f.sku.trim() || null, title: f.title.trim(),
-      cogs: n('cogs'), current_price: price, fee_per_unit: n('fee_per_unit'),
-      referral_fee_pct: n('referral_fee_pct') || 15, inventory_qty: n('inventory_qty'),
-      reorder_point: n('reorder_point'), sales_last_30d: sales,
-      lead_time_days: f.lead_time_days ? n('lead_time_days') : null, supplier: f.supplier.trim() || null,
-      cogs_source: 'manual', fee_source: n('fee_per_unit') > 0 ? 'manual' : null,
+    const { error: e2 } = await supabase.rpc('sku_save', {
+      p_tenant: tenant.id,
+      p_patch: {
+        asin: f.asin.trim().toUpperCase(), sku: f.sku.trim() || null, title: f.title.trim(),
+        current_price: price, fee_per_unit: n('fee_per_unit'), referral_fee_pct: n('referral_fee_pct') || 15,
+        inventory_qty: n('inventory_qty'), reorder_point: n('reorder_point'), sales_last_30d: sales,
+        lead_time_days: f.lead_time_days ? n('lead_time_days') : null, supplier: f.supplier.trim() || null,
+      },
+      p_new_cogs: n('cogs') > 0 ? n('cogs') : null,
     });
     setSaving(false);
     if (e2) { setError(e2.code === '23505' ? 'ASIN này đã có trong danh mục.' : e2.message); return; }

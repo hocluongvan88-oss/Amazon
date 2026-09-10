@@ -302,25 +302,22 @@ function EditModal({ sku, onClose, onSaved }: { sku: Sku; onClose: () => void; o
   async function save() {
     if (!tenant) return;
     setBusy(true); setErr(null);
-    const stamp = new Date().toISOString();
     const patch: Record<string, unknown> = {
       title: f.title.trim(), sku: f.sku.trim() || null, current_price: n(f.current_price), list_price: n(f.list_price),
       fee_per_unit: n(f.fee_per_unit) ?? 0, referral_fee_pct: n(f.referral_fee_pct) ?? 15, inventory_qty: n(f.inventory_qty) ?? 0, reorder_point: n(f.reorder_point) ?? 0,
       lead_time_days: n(f.lead_time_days), inventory_inbound: n(f.inventory_inbound) ?? 0, supplier: f.supplier.trim() || null, status: f.status,
     };
-    if (Number(f.fee_per_unit) !== Number(sku.fee_per_unit) || Number(f.referral_fee_pct) !== Number(sku.referral_fee_pct)) { patch.fee_source = 'manual'; patch.fee_updated_at = stamp; }
-    const { error } = await supabase.from('amazon_skus').update(patch).eq('id', sku.id);
+    const newCogs = f.new_cogs !== '' && Number(f.new_cogs) !== Number(sku.cogs) ? Number(f.new_cogs) : null;
+    const { error } = await supabase.rpc('sku_save', { p_tenant: tenant.id, p_sku: sku.id, p_patch: patch, p_new_cogs: newCogs, p_cogs_note: newCogs != null ? (f.cogs_note || null) : null });
     if (error) { setErr(error.message); setBusy(false); return; }
-    if (f.new_cogs !== '' && Number(f.new_cogs) !== Number(sku.cogs)) {
-      const { error: e2 } = await supabase.from('cogs_history').upsert({ tenant_id: tenant.id, sku_id: sku.id, effective_from: stamp.slice(0, 10), cogs: Number(f.new_cogs), source: 'manual', note: f.cogs_note || null }, { onConflict: 'sku_id,effective_from' });
-      if (e2) { setErr(e2.message); setBusy(false); return; }
-    }
     setBusy(false); onSaved(); router.refresh();
   }
 
   async function remove() {
     if (!confirm('Lưu trữ ASIN này? Nó sẽ ẩn khỏi Tổng quan nhưng dữ liệu lịch sử được giữ.')) return;
-    await supabase.from('amazon_skus').update({ status: 'archived' }).eq('id', sku.id);
+    if (!tenant) return;
+    const { error } = await supabase.rpc('sku_save', { p_tenant: tenant.id, p_sku: sku.id, p_patch: { status: 'archived' } });
+    if (error) { setErr(error.message); return; }
     onSaved();
   }
 
