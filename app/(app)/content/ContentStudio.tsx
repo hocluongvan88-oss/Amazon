@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { CvrBeforeAfterChart, type CvrPoint } from '@/components/charts';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { LIMITS } from '@/lib/limits';
@@ -400,6 +401,7 @@ function VersionsPanel({ kind, versions, facts, skuId, tenantId, can, userId, br
       )}
 
       {impact && <ImpactBox data={impact} onClose={() => setImpact(null)} />}
+      {impact && impact.ok === true && <CvrSeries versionId={String(impact.version_id)} />}
     </div>
   );
 }
@@ -431,6 +433,24 @@ function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, o
   const items = (body.items as string[]) ?? [];
   const modules = (body.modules as { type: string; header: string; body: string; image_brief: string }[]) ?? [];
   const text = String(body.text ?? '');
+  const [templates, setTemplates] = React.useState<{ id: string; key: string; name: string; use_case: string; description: string | null; tenant_id: string | null }[]>([]);
+  const [tplMsg, setTplMsg] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (kind !== 'aplus') return;
+    (async () => {
+      const { data } = await supabase.from('aplus_templates').select('id,key,name,use_case,description,tenant_id').eq('is_active', true).order('tenant_id', { nullsFirst: false }).limit(50);
+      setTemplates(data ?? []);
+    })();
+  }, [kind]);
+  async function applyTemplate(id: string) {
+    if (!id) return;
+    if (modules.some((m) => m.header || m.body) && !confirm('Thay toàn bộ module hiện tại bằng template?')) return;
+    const { data, error } = await supabase.rpc('build_aplus_from_template', { p_template: id, p_sku: skuId });
+    if (error) { onError(error.message); return; }
+    const r = data as { body: Record<string, unknown>; claims: { text: string; fact_id: string | null }[]; missing_facts: string[]; brief: string };
+    setBody(r.body); setClaims(r.claims); setBrief(r.brief); setPre(null);
+    setTplMsg(r.missing_facts.length ? `Thiếu fact đã xác minh: ${r.missing_facts.join(', ')} — bổ sung ở tab Product Facts hoặc xoá placeholder trước khi gửi QA.` : 'Đã điền từ template; mọi số liệu đều gắn với fact đã xác minh.');
+  }
 
   return (
     <div className="border border-indigo-200 bg-indigo-50/40 rounded-lg p-4 space-y-3">
@@ -449,6 +469,19 @@ function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, o
       )}
       {kind === 'aplus' && (
         <div className="space-y-3">
+          {templates.length > 0 && (
+            <div className="rounded-md border border-dashed border-indigo-300 bg-white p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">Template A+</span>
+                <select className={`${input} w-72`} defaultValue="" onChange={(e) => { void applyTemplate(e.target.value); e.target.value = ''; }}>
+                  <option value="">— chọn template để điền từ Product Facts —</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.tenant_id ? ' (riêng)' : ''}</option>)}
+                </select>
+                <span className="text-xs text-gray-500">Placeholder {'{fact:key}'} chỉ điền từ fact đã xác minh; không bịa số liệu.</span>
+              </div>
+              {tplMsg && <p className={`mt-2 text-xs ${tplMsg.startsWith('Thiếu') ? 'text-amber-700' : 'text-emerald-700'}`}>{tplMsg}</p>}
+            </div>
+          )}
           {modules.map((m, i) => (
             <div key={i} className="border border-gray-200 bg-white rounded-md p-3 space-y-2">
               <div className="flex gap-2">
@@ -528,6 +561,36 @@ function ImpactBox({ data, onClose }: { data: Record<string, unknown>; onClose: 
       </table>
       {(data.concurrent_changes as string[]).length > 0 && <ul className="text-xs text-amber-800 list-disc pl-5">{(data.concurrent_changes as string[]).map((c) => <li key={c}>{c}</li>)}</ul>}
       <p className="text-xs text-gray-600">{String(data.note)}</p>
+    </div>
+  );
+}
+
+// ============================================================
+function CvrSeries({ versionId }: { versionId: string }) {
+  const [rows, setRows] = React.useState<CvrPoint[] | null>(null);
+  const [days, setDays] = React.useState(14);
+  React.useEffect(() => {
+    (async () => {
+      const { data } = await supabase.rpc('content_cvr_series', { p_version: versionId, p_days: days });
+      setRows((data ?? []) as CvrPoint[]);
+    })();
+  }, [versionId, days]);
+  if (!rows) return null;
+  const agg = (ph: 'before' | 'after') => { const r = rows.filter((x) => x.phase === ph && x.sessions != null); const s = r.reduce((a, x) => a + (x.sessions ?? 0), 0); const u = r.reduce((a, x) => a + (x.units ?? 0), 0); const c = r.filter((x) => x.control_cvr != null); return { days: r.length, cvr: s > 0 ? u / s : null, ctrl: c.length ? c.reduce((a, x) => a + (x.control_cvr ?? 0), 0) / c.length : null }; };
+  const b = agg('before'), a = agg('after');
+  const pct = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(2)}%`);
+  const rel = b.cvr && a.cvr ? ((a.cvr / b.cvr - 1) * 100) : null;
+  const relCtrl = b.ctrl && a.ctrl ? ((a.ctrl / b.ctrl - 1) * 100) : null;
+  return (
+    <div className="rounded-lg border border-gray-200 p-4 space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="font-medium">CVR trước / sau publish</p>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${input} w-28`}>{[7, 14, 28].map((d) => <option key={d} value={d}>±{d} ngày</option>)}</select>
+        <span className="text-xs text-gray-600">Trước {pct(b.cvr)} ({b.days}d) → Sau {pct(a.cvr)} ({a.days}d){rel != null && <b className={rel >= 0 ? 'text-emerald-700' : 'text-red-700'}> {rel >= 0 ? '+' : ''}{rel.toFixed(1)}%</b>}</span>
+        <span className="text-xs text-gray-500">Đối chứng: {pct(b.ctrl)} → {pct(a.ctrl)}{relCtrl != null && ` (${relCtrl >= 0 ? '+' : ''}${relCtrl.toFixed(1)}%)`}</span>
+      </div>
+      {rows.some((r) => r.sessions != null) ? <CvrBeforeAfterChart data={rows} /> : <p className="text-xs text-gray-500">Chưa có dữ liệu sessions theo ngày trong cửa sổ này (cần feed orders/sales & traffic).</p>}
+      <p className="text-xs text-gray-500">Đường xám = CVR trung bình các ASIN cùng tenant không có thay đổi trong cửa sổ. Nếu đường xám cũng dịch chuyển tương tự, thay đổi có thể do thị trường/mùa vụ chứ không phải content.</p>
     </div>
   );
 }

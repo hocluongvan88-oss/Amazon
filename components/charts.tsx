@@ -194,3 +194,29 @@ export function ForecastChart({ data, height = 200 }: { data: ForecastPoint[]; h
     </ResponsiveContainer>
   );
 }
+
+// ---------- Before/After CVR (content publish) ----------
+export type CvrPoint = { date: string; phase: 'before' | 'publish' | 'after'; sessions: number | null; units: number | null; cvr: number | null; control_cvr: number | null; price: number | null; ad_spend: number | null; inventory_qty: number | null };
+
+export function CvrBeforeAfterChart({ data, height = 240 }: { data: CvrPoint[]; height?: number }) {
+  const pubDate = data.find((d) => d.phase === 'publish')?.date;
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const rows = data.map((d) => ({ ...d, cvr_pct: d.cvr == null ? null : d.cvr * 100, ctrl_pct: d.control_cvr == null ? null : d.control_cvr * 100 }));
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+        <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} minTickGap={24} />
+        <YAxis yAxisId="cvr" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={44} />
+        <YAxis yAxisId="sess" orientation="right" tickFormatter={fmtNum} tick={{ fontSize: 11 }} width={40} />
+        <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => new Date(String(l)).toLocaleDateString('vi-VN')}
+          formatter={(v, name) => [typeof v === 'number' ? (String(name).includes('CVR') ? pct(v / 100) : fmtNum(v)) : '—', name]} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar yAxisId="sess" dataKey="sessions" name="Sessions" fill="#e0e7ff" radius={[2, 2, 0, 0]} />
+        <Line yAxisId="cvr" type="monotone" dataKey="cvr_pct" name="CVR ASIN" stroke="#4f46e5" strokeWidth={2} dot={false} connectNulls />
+        <Line yAxisId="cvr" type="monotone" dataKey="ctrl_pct" name="CVR đối chứng" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+        {pubDate && <ReferenceLine yAxisId="cvr" x={pubDate} stroke="#059669" strokeDasharray="3 3" label={{ value: 'Publish', fontSize: 11, fill: '#059669', position: 'top' }} />}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}

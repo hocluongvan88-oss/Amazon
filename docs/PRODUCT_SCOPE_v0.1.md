@@ -98,7 +98,7 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 7. ✅ KPI content/AI quality + sổ đo lường (`016_measurement_kpi.sql`): `measurements` lưu baseline/đối chứng/thay đổi đồng thời/confidence, đóng băng sau 28 ngày; quyết định: **không chia attribution khi confounded**, chỉ bản đo moderate/high cộng vào North Star; `content_kpi`, `ai_quality_kpi`, `pilot_scorecard_v2`.
 
 ### P1 (trong pilot 90 ngày)
-Listing Copilot (AI draft từ facts) · A+ template builder · version compare & rollback · before/after CVR view · evidence panel cho recommendation · deep link/checklist · ads guardrail liên kết inventory & content health · review topic → content/QA task.
+Listing Copilot (AI draft từ facts) · ✅ A+ template builder (`017_aplus_cvr.sql`) · version compare & rollback · ✅ before/after CVR view (`content_cvr_series` + biểu đồ có đối chứng) · evidence panel cho recommendation · deep link/checklist · ads guardrail liên kết inventory & content health · review topic → content/QA task.
 
 ### P2 (sau khi chứng minh hiệu quả)
 SP‑API/Ads API write‑back giới hạn · bounded auto bid/budget · image brief & asset generation có duyệt · experiment framework · multi‑marketplace localization · auto publish theo permission + policy gate.

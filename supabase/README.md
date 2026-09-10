@@ -22,6 +22,7 @@ Tất cả các file đều idempotent (chạy lại không lỗi). `003_lock_do
 
 | 14 | `015_connectors_freshness.sql` | **P0‑5**: `data_feeds` (catalog 9 feed: SLA, settlement lag, Amazon report type), `data_sources` (csv_manual / sp_api / ads_api; chỉ `credential_ref`, không secret), `ingestion_runs` (mọi lần lấy dữ liệu; CSV `import_jobs` tự sinh run + backfill), `v_data_freshness` / `feed_is_fresh` / `freshness_summary`, `asin_control_room_v2` (thêm freshness + signal), `upsert_data_source` (cần `policy.edit`) | Bắt buộc |
 | 15 | `016_measurement_kpi.sql` | **P0‑6**: `measurements` (baseline đóng băng, đối chứng, thay đổi đồng thời, confidence; final sau cửa sổ + 28 ngày, bất biến), `measure_subject` / `measure_all` / `finalize_measurements`, `content_kpi`, `ai_quality_kpi`, `pilot_scorecard_v2` (chỉ cộng CP từ bản đo moderate/high; confounded không chia attribution) | Bắt buộc |
+| 16 | `017_aplus_cvr.sql` | **P1**: `aplus_templates` (4 template toàn cục + theo tenant), `build_aplus_from_template` (điền `{fact:key}` chỉ từ fact verified, tự gắn claims, liệt kê fact thiếu), gate A+ mở rộng (độ dài header/body theo module, image brief, placeholder chưa điền, nhắc đối thủ) bọc quanh gate 013, `content_cvr_series` (CVR theo ngày ±N quanh publish + đối chứng) | Bắt buộc |
 
 ## Sau khi chạy 014
 Chạy `supabase/tests/014_tasks_control_room_test.sql` → FAIL = 0. UI: menu **Hàng đợi task**; trang SKU có **ASIN Control Room**; tab Ticket VOC có nút **Tạo task →**.
@@ -95,3 +96,6 @@ Xem `.env.example`. Thêm vào `.env.local` (local) và Vercel → Settings → 
 
 ## Sau khi chạy 016
 Chạy `supabase/tests/016_measurement_kpi_test.sql` → FAIL = 0. UI: trang **Đo lường** có thêm 2 thẻ KPI Content / KPI chất lượng AI và **Sổ đo lường** (nút "Đo lại" gọi `measure_all` + `finalize_measurements`).
+
+## Sau khi chạy 017
+Chạy `supabase/tests/017_aplus_cvr_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → "Draft mới" có ô **Template A+**; nút "Tác động" của bản published hiện thêm **biểu đồ CVR trước/sau** kèm đường đối chứng.
