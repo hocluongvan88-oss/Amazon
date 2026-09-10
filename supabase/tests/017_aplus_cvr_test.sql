@@ -69,8 +69,11 @@ BEGIN
   INSERT INTO _t SELECT 'gate: base rules still apply for title', (gate->>'ok')::boolean = false;
 
   -- 4. Template theo tenant: operator không tạo được; owner (content.qa_approve) tạo được; tenant khác không thấy
-  PERFORM pg_temp.expect_error('tpl: operator cannot create tenant template', format('INSERT INTO public.aplus_templates (tenant_id, key, name, use_case, modules) VALUES (%L, ''mine'', ''Riêng'', ''trust'', ''[]''::jsonb)', t));
+  -- SQL Editor chạy với role postgres (bypass RLS) → kiểm policy + permission thay vì insert trực tiếp
+  INSERT INTO _t SELECT 'tpl: write policy requires content.qa_approve', EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'aplus_templates' AND policyname = 'tpl_write' AND qual LIKE '%content.qa_approve%');
+  INSERT INTO _t SELECT 'tpl: operator lacks content.qa_approve', public.has_permission(t, 'content.qa_approve') = false;
   PERFORM pg_temp.as_user(u_qa);
+  INSERT INTO _t SELECT 'tpl: owner has content.qa_approve', public.has_permission(t, 'content.qa_approve') = true;
   PERFORM pg_temp.expect_ok('tpl: owner creates tenant template', format('INSERT INTO public.aplus_templates (tenant_id, key, name, use_case, modules) VALUES (%L, ''mine'', ''Riêng'', ''trust'', ''[{"type":"standard_text","header":"{brand}","body":"{fact:capacity}","image_brief":""}]''::jsonb)', t));
   SELECT id INTO tpl2 FROM public.aplus_templates WHERE tenant_id = t AND key = 'mine';
   built := public.build_aplus_from_template(tpl2, sk1);
