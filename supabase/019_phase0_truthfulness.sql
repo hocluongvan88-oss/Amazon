@@ -80,7 +80,7 @@ GRANT EXECUTE ON FUNCTION public.tenant_has_sp_api(UUID) TO authenticated;
 CREATE OR REPLACE FUNCTION public.execute_recommendation(p_rec UUID, p_mode TEXT DEFAULT 'dry_run')
 RETURNS public.actions LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE r public.recommendations%ROWTYPE; k public.amazon_skus%ROWTYPE; pol public.policy_register%ROWTYPE; a public.actions;
-        atype TEXT; payload JSONB; key TEXT; resp JSONB; live_today INT; base NUMERIC; dry_ok BOOLEAN; chg NUMERIC; chan TEXT;
+        atype TEXT; v_payload JSONB; key TEXT; resp JSONB; live_today INT; base NUMERIC; dry_ok BOOLEAN; chg NUMERIC; chan TEXT;
 BEGIN
   IF p_mode NOT IN ('dry_run','canary','live') THEN RAISE EXCEPTION 'mode không hợp lệ'; END IF;
   SELECT * INTO r FROM public.recommendations WHERE id = p_rec;
@@ -123,15 +123,15 @@ BEGIN
       IF chg > pol.price_change_max_pct THEN RAISE EXCEPTION 'Thay đổi giá % phần trăm vượt trần % phần trăm của chính sách', round(chg, 1), pol.price_change_max_pct; END IF;
       IF (r.proposed_value - k.cogs - k.fee_per_unit - r.proposed_value * k.referral_fee_pct / 100) / r.proposed_value * 100 < pol.min_margin_pct THEN
         RAISE EXCEPTION 'Giá mới làm biên dưới mức tối thiểu % phần trăm', pol.min_margin_pct; END IF;
-      payload := jsonb_build_object('asin', r.asin, 'sku', k.sku, 'marketplace', k.marketplace, 'current_price', k.current_price, 'new_price', r.proposed_value, 'currency', 'USD');
+      v_payload := jsonb_build_object('asin', r.asin, 'sku', k.sku, 'marketplace', k.marketplace, 'current_price', k.current_price, 'new_price', r.proposed_value, 'currency', 'USD');
     WHEN 'replenish' THEN
       atype := 'replenish_po';
-      payload := jsonb_build_object('asin', r.asin, 'sku', k.sku, 'qty', r.proposed_value::int, 'supplier', k.supplier, 'lead_time_days', k.lead_time_days);
+      v_payload := jsonb_build_object('asin', r.asin, 'sku', k.sku, 'qty', r.proposed_value::int, 'supplier', k.supplier, 'lead_time_days', k.lead_time_days);
     ELSE
       atype := 'inventory_note';
-      payload := jsonb_build_object('asin', r.asin, 'note', r.title);
+      v_payload := jsonb_build_object('asin', r.asin, 'note', r.title);
   END CASE;
-  key := md5(r.id::text || ':' || p_mode || ':' || payload::text);
+  key := md5(r.id::text || ':' || p_mode || ':' || v_payload::text);
 
   PERFORM set_config('vexim.action_ctx', 'on', true);
   SELECT * INTO a FROM public.actions WHERE tenant_id = r.tenant_id AND idempotency_key = key;
@@ -140,7 +140,7 @@ BEGIN
     UPDATE public.actions SET status = 'running', attempt = attempt + 1, started_at = now(), error = NULL WHERE id = a.id RETURNING * INTO a;
   ELSE
     INSERT INTO public.actions (tenant_id, recommendation_id, sku_id, asin, action_type, mode, idempotency_key, payload, status, attempt, before_value, started_at, created_by, automation_level, execution_channel, amazon_applied)
-    VALUES (r.tenant_id, r.id, r.sku_id, r.asin, atype, p_mode, key, payload, 'running', 1, CASE WHEN atype = 'price_update' THEN k.current_price END, now(), auth.uid(),
+    VALUES (r.tenant_id, r.id, r.sku_id, r.asin, atype, p_mode, key, v_payload, 'running', 1, CASE WHEN atype = 'price_update' THEN k.current_price END, now(), auth.uid(),
             CASE WHEN p_mode = 'live' THEN 'L4' ELSE 'L3' END, chan, false)
     RETURNING * INTO a;
   END IF;
@@ -159,7 +159,7 @@ BEGIN
   IF (resp->>'ok')::boolean THEN
     SELECT COALESCE(AVG(units), 0) INTO base FROM public.sku_daily_snapshots WHERE sku_id = r.sku_id AND date > CURRENT_DATE - 7 AND date <= CURRENT_DATE AND units IS NOT NULL;
     UPDATE public.actions SET status = 'succeeded', response = resp, finished_at = now(),
-      after_value = CASE WHEN atype = 'price_update' THEN (payload->>'new_price')::numeric END,
+      after_value = CASE WHEN atype = 'price_update' THEN (v_payload->>'new_price')::numeric END,
       watch_until = CASE WHEN p_mode <> 'dry_run' THEN now() + make_interval(hours => pol.rollback_watch_hours) END,
       baseline_units_per_day = CASE WHEN p_mode <> 'dry_run' THEN base END,
       amazon_applied = false
