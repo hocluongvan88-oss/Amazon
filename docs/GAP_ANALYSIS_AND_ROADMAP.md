@@ -92,11 +92,13 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] **Gate check**: MAPE mô hình chọn vs naive trên trang Tồn kho (`v_forecast_accuracy`).
 - [ ] Chưa có: đối soát inbound với shipment thực tế (cần dữ liệu FBA shipment).
 
-### Tuần 9‑10 – Review / VOC
-- [ ] Bảng `review_topics`, `review_classifications(review_id, topic, sentiment, severity)`, `voc_tickets(type: defect|content|logistics, status)`.
-- [ ] Job phân loại (LLM có policy prompt + danh sách từ cấm) → chỉ **listening/triage**, tuyệt đối không tạo action tác động rating.
-- [ ] Trang **Review/VOC**: cụm chủ đề theo ASIN, triage sao thấp, tạo ticket, bản nháp phản hồi có policy check + duyệt người.
-- [ ] **Gate check**: QA mẫu ngẫu nhiên, precision phân loại, 0 prohibited wording.
+### Tuần 9‑10 – Review / VOC ✅ (009)
+- [x] Bảng `review_topics` (13 chủ đề mặc định, từ khoá EN/VI, chỉnh được), `review_classifications(review_id, topic, sentiment, severity, confidence, matched[])`, `voc_tickets(type: defect|content|logistics|service|other, priority, status)`, `response_drafts`.
+- [x] Phân loại theo từ khoá (giải thích được, không gọi LLM) – trigger khi thêm review + `classify_reviews()`; chỉ **listening/triage**. Rule `REVIEW_CLUSTER` (≥3 review ≤3★ cùng chủ đề/30 ngày) → ngoại lệ P2.
+- [x] Trang **Review/VOC** `/reviews`: triage sao thấp, cụm chủ đề (30/90 ngày, theo ASIN), ticket VOC (gán, trạng thái, ghi chú), nháp phản hồi theo mẫu + **policy check** (danh sách từ cấm trong `policy_register.prohibited_phrases`, link/SĐT/email) + duyệt bởi người khác + đánh dấu đã gửi thủ công.
+- [x] Import CSV loại **Review khách hàng** (+ template).
+- [x] **Gate check**: tab QA – rút mẫu ngẫu nhiên, precision phân loại theo chủ đề; trigger DB chặn duyệt/gửi nếu có từ ngữ bị cấm (0 prohibited wording).
+- [ ] Nâng cấp phân loại bằng LLM khi có ngân sách API (giữ nguyên schema, `method='llm'`).
 
 ### Tuần 11 – Bounded automation
 - [ ] Bảng `actions(recommendation_id, idempotency_key, mode: dry_run|canary|live, payload, response, status)`, `rollbacks`.

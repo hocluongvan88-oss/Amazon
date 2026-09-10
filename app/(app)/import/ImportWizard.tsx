@@ -147,6 +147,16 @@ export default function ImportWizard() {
         const payload = chunk.map((p) => ({ tenant_id: tenant.id, marketplace: tenant.marketplace, ...p.data }));
         const { error } = await supabase.from('amazon_skus').upsert(payload, { onConflict: 'tenant_id,asin,marketplace' });
         if (error) chunk.forEach((p) => errors.push({ row: p.row, asin: String(p.data.asin), message: error.message })); else ok += chunk.length;
+      } else if (kind === 'reviews') {
+        const rows = chunk.filter((p) => byAsin.has(String(p.data.asin)));
+        chunk.filter((p) => !byAsin.has(String(p.data.asin))).forEach((p) => errors.push({ row: p.row, asin: String(p.data.asin), message: 'ASIN chưa có trong danh mục – import Danh mục trước' }));
+        if (rows.length) {
+          const yes = (v: unknown) => ['yes', 'true', '1', 'y', 'verified', 'có', 'co'].includes(String(v ?? '').trim().toLowerCase());
+          const payload = rows.map((p) => ({ tenant_id: tenant.id, asin: String(p.data.asin), rating: p.data.rating, title: p.data.title ?? null, body: p.data.body,
+            reviewed_at: p.data.reviewed_at ?? null, reviewer_id: p.data.reviewer_id ?? null, verified_purchase: yes(p.data.verified_purchase), source: 'csv' }));
+          const { error } = await supabase.from('raw_reviews').insert(payload);
+          if (error) rows.forEach((p) => errors.push({ row: p.row, asin: String(p.data.asin), message: error.message })); else ok += rows.length;
+        }
       } else if (kind === 'cogs') {
         const rows = chunk.filter((p) => byAsin.has(String(p.data.asin)));
         chunk.filter((p) => !byAsin.has(String(p.data.asin))).forEach((p) => errors.push({ row: p.row, asin: String(p.data.asin), message: 'ASIN chưa có trong danh mục – import Danh mục trước' }));

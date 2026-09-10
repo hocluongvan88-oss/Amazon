@@ -1,6 +1,6 @@
 import { normalizeHeader } from './csv';
 
-export type ImportKind = 'catalog' | 'cogs' | 'sales' | 'inventory' | 'fees' | 'orders' | 'ads';
+export type ImportKind = 'catalog' | 'cogs' | 'sales' | 'inventory' | 'fees' | 'orders' | 'ads' | 'reviews';
 
 export type FieldDef = {
   key: string;
@@ -124,6 +124,22 @@ export const SCHEMAS: Record<ImportKind, ImportSchema> = {
       { key: 'ad_sales', label: 'Doanh thu QC', type: 'number', aliases: ['7 day total sales', '7 day total sales ', 'sales', '14 day total sales', 'doanh thu'] },
       { key: 'ad_clicks', label: 'Clicks', type: 'int', aliases: ['clicks'] },
       { key: 'ad_impressions', label: 'Hiển thị', type: 'int', aliases: ['impressions'] },
+    ],
+  },
+  reviews: {
+    kind: 'reviews',
+    title: 'Review khách hàng',
+    description: 'Nhập review để phân loại chủ đề, triage sao thấp và mở ticket VOC. Chỉ lắng nghe – không có hành động tác động rating.',
+    source: 'Seller Central → Brands → Customer Reviews → export, hoặc file tổng hợp từ công cụ bên thứ ba',
+    templateFile: '/templates/reviews.csv',
+    fields: [
+      ASIN,
+      { key: 'rating', label: 'Số sao (1‑5)', required: true, type: 'int', aliases: ['rating', 'stars', 'star rating', 'sao'] },
+      { key: 'title', label: 'Tiêu đề', required: false, type: 'text', aliases: ['title', 'review title', 'headline', 'tieu de'] },
+      { key: 'body', label: 'Nội dung', required: true, type: 'text', aliases: ['body', 'review', 'review text', 'content', 'comment', 'noi dung'] },
+      { key: 'reviewed_at', label: 'Ngày review', required: false, type: 'date', aliases: ['date', 'review date', 'reviewed at', 'ngay'] },
+      { key: 'reviewer_id', label: 'Mã người review', required: false, type: 'text', aliases: ['reviewer id', 'reviewer', 'profile id', 'author'] },
+      { key: 'verified_purchase', label: 'Đã mua (verified)', required: false, type: 'text', aliases: ['verified', 'verified purchase'] },
     ],
   },
 };

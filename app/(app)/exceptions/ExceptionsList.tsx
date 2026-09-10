@@ -22,7 +22,7 @@ const CODE_CLS: Record<string, string> = {
 };
 export const RULE_LABEL: Record<string, string> = {
   STOCKOUT_IMMINENT: 'Sắp hết hàng', BELOW_REORDER_POINT: 'Dưới điểm đặt hàng', OVERSTOCK: 'Tồn dư', MARGIN_EROSION: 'Xói mòn biên',
-  VELOCITY_DROP: 'Sụt tốc độ bán', NO_SALES_7D: 'Không bán 7 ngày', PRICE_VOLATILITY: 'Giá biến động', DATA_STALE: 'Dữ liệu cũ',
+  VELOCITY_DROP: 'Sụt tốc độ bán', NO_SALES_7D: 'Không bán 7 ngày', PRICE_VOLATILITY: 'Giá biến động', DATA_STALE: 'Dữ liệu cũ', REVIEW_CLUSTER: 'Cụm review tiêu cực',
 };
 
 export default function ExceptionsList() {
