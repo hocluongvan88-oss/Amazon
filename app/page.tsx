@@ -24,7 +24,13 @@ export default function DashboardPage() {
         if (queryError) throw queryError;
         setSkus(data ?? []);
       } catch (e: any) {
-        setError(e.message);
+        setError(
+          process.env.NEXT_PUBLIC_SUPABASE_URL
+            ? e instanceof Error
+              ? e.message
+              : 'Không thể tải dữ liệu từ Supabase.'
+            : 'Supabase chưa được cấu hình cho preview này.'
+        );
       } finally {
         setLoading(false);
       }
