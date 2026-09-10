@@ -7,8 +7,9 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 | 1 | `001_schema.sql` | Bảng, index, trigger, RLS cơ bản, view | Bắt buộc |
 | 2 | `002_seed.sql` | 8 SKU mẫu + review + gợi ý + ngoại lệ | Khuyến nghị cho pilot/demo |
 | 3 | `004_tenancy_auth.sql` | **Sprint 0**: tenants, `tenant_id` mọi bảng, RLS theo tenant, guard chuyển trạng thái theo cấp duyệt, audit trigger, gỡ quyền `anon` | Bắt buộc trước khi cho người dùng thật vào |
+| 4 | `005_data_contract.sql` | **Tuần 1‑2**: `policy_register`, `cogs_history`, `kpi_baseline`, `import_jobs`, cột lead time/nguồn dữ liệu, trigger gán cấp duyệt từ policy, view `v_data_readiness` (gate ≥90%), RPC `capture_kpi_baseline` | Bắt buộc |
 
-Cả 3 file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
+Tất cả các file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
 
 ## Sau khi chạy 004 – thiết lập owner đầu tiên (1 lần)
 

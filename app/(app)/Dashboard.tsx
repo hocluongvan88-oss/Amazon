@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import { usd, num, riskLevel, RISK_META, REC_TYPE_LABEL } from '@/lib/format';
 import { Card, CardHeader, Badge, StatCard, EmptyState, Spinner, ErrorBox, btn, input } from '@/components/ui';
 import PageHeader from '@/components/PageHeader';
+import DataReadiness from '@/components/DataReadiness';
 import { useTenant } from '@/lib/tenant';
 
 type Sku = {
@@ -112,6 +113,8 @@ export default function Dashboard() {
         <StatCard label="Gợi ý chờ duyệt" value={pending.length} tone={pending.length ? 'amber' : 'default'}
           hint={pending.length ? `Tác động ước tính ${usd(pendingImpact, 0)}/tháng` : 'Không có việc tồn đọng'} />
       </div>
+
+      <div className="mb-6"><DataReadiness /></div>
 
       {/* Action queue + exceptions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">

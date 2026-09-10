@@ -61,11 +61,12 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] Trigger `guard_recommendation_transition`: kiểm tra chuyển trạng thái hợp lệ, cấp duyệt theo role (L0/L1 → operator+, L2 → owner), bắt buộc lý do từ chối/hoàn tác, tự ghi `submitted_by/approved_by/rejected_by/executed_by`. UI khoá nút + modal lý do + timeline.
 - [x] Trang **Thành viên** (owner): thêm theo email, đổi role, gỡ; chặn gỡ owner cuối.
 
-### Tuần 1‑2 – Discovery & Data contract
-- [ ] Migration `005_data_contract.sql`: bảng `cogs_history`, `supplier_lead_times`, `policy_register` (ngưỡng, cấp duyệt theo action type), `kpi_baseline`.
-- [ ] Trang **Cài đặt → Policy**: sửa ngưỡng risk → cấp duyệt, ngưỡng P0‑P3, giới hạn % đổi giá/ngày.
-- [ ] Trang **Nhập dữ liệu**: import CSV (Business Report, Inventory, Fee preview) với validate & báo lỗi dòng.
-- [ ] **Gate check UI**: % doanh thu pilot có đủ COGS + fee để tính CP (mục tiêu ≥ 90%).
+### Tuần 1‑2 – Discovery & Data contract ✅ (hoàn thành 2026‑09‑10)
+- [x] Migration `005_data_contract.sql`: `policy_register` (1 dòng/brand, tự tạo), `cogs_history` (đồng bộ vào SKU), `kpi_baseline`, `import_jobs`; cột `lead_time_days`, `supplier`, `revenue_last_30d`, `sessions_last_30d`, `cogs_source/fee_source`, `status` trên SKU.
+- [x] Trigger `assign_recommendation_level`: cấp duyệt từ risk score + % đổi giá theo policy; chặn đổi giá vượt `price_change_max_pct`; review_response tối thiểu L1.
+- [x] Trang **Chính sách** (`/settings/policy`, owner sửa, người khác xem): ngưỡng L0/L1/L2, giới hạn đổi giá, biên tối thiểu, P0–P2, trọng số risk, lead time/safety stock, gate %, tolerance. Validate ràng buộc, ghi audit.
+- [x] Trang **Nhập dữ liệu** (`/import`): 5 loại (danh mục, COGS, doanh số 30 ngày, tồn kho FBA, phí), tự khớp cột theo header Seller Central, preview + validate từng dòng, upsert theo lô, lịch sử import kèm lỗi. File mẫu tại `/templates/*.csv`.
+- [x] **Gate check** trên Tổng quan: % doanh thu có đủ COGS + FBA fee + referral, thanh tiến độ vs mục tiêu, liệt kê trường thiếu; nút **Chốt baseline KPI** (RPC) làm mốc đo incremental.
 
 ### Tuần 3‑4 – Canonical model & daily snapshot
 - [ ] Bảng `sku_daily_snapshots(tenant_id, sku_id, date, price, units, revenue, fees, ad_spend, sessions, cvr, inventory_fba, inventory_inbound, …)`.

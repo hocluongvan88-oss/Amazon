@@ -11,12 +11,12 @@ import { useTenant } from '@/lib/tenant';
 type Form = {
   asin: string; sku: string; title: string;
   cogs: string; current_price: string; fee_per_unit: string; referral_fee_pct: string;
-  inventory_qty: string; reorder_point: string; sales_last_30d: string;
+  inventory_qty: string; reorder_point: string; sales_last_30d: string; lead_time_days: string; supplier: string;
 };
 
 const initial: Form = {
   asin: '', sku: '', title: '', cogs: '', current_price: '', fee_per_unit: '0', referral_fee_pct: '15',
-  inventory_qty: '0', reorder_point: '0', sales_last_30d: '0',
+  inventory_qty: '0', reorder_point: '0', sales_last_30d: '0', lead_time_days: '', supplier: '',
 };
 
 export default function AddSkuForm() {
@@ -46,6 +46,8 @@ export default function AddSkuForm() {
       cogs: n('cogs'), current_price: price, fee_per_unit: n('fee_per_unit'),
       referral_fee_pct: n('referral_fee_pct') || 15, inventory_qty: n('inventory_qty'),
       reorder_point: n('reorder_point'), sales_last_30d: sales,
+      lead_time_days: f.lead_time_days ? n('lead_time_days') : null, supplier: f.supplier.trim() || null,
+      cogs_source: 'manual', fee_source: n('fee_per_unit') > 0 ? 'manual' : null,
     });
     setSaving(false);
     if (e2) { setError(e2.code === '23505' ? 'ASIN này đã có trong danh mục.' : e2.message); return; }
@@ -90,6 +92,8 @@ export default function AddSkuForm() {
             <Field label="Tồn kho hiện tại (đv)"><Num value={f.inventory_qty} onChange={set('inventory_qty')} step={1} /></Field>
             <Field label="Điểm đặt hàng lại (đv)" hint="Dưới mức này → cần nhập thêm"><Num value={f.reorder_point} onChange={set('reorder_point')} step={1} /></Field>
             <Field label="Doanh số 30 ngày (đv)"><Num value={f.sales_last_30d} onChange={set('sales_last_30d')} step={1} /></Field>
+            <Field label="Lead time nhà cung cấp (ngày)" hint="Dùng để tính điểm đặt hàng & rủi ro"><Num value={f.lead_time_days} onChange={set('lead_time_days')} step={1} /></Field>
+            <div className="sm:col-span-2"><Field label="Nhà cung cấp"><input value={f.supplier} onChange={set('supplier')} className={input} placeholder="Tuỳ chọn" /></Field></div>
           </div>
         </Card>
       </div>
