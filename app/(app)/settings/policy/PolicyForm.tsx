@@ -19,8 +19,8 @@ type Policy = {
 };
 
 export default function PolicyForm() {
-  const { tenant } = useTenant();
-  const isOwner = tenant?.role === 'owner';
+  const { tenant, can } = useTenant();
+  const isOwner = can('policy.edit');
   const [p, setP] = React.useState<Policy | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);

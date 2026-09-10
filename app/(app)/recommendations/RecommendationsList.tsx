@@ -7,28 +7,29 @@ import ExecutePanel, { type AutomationPolicy } from '@/components/ExecutePanel';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { usd, REC_TYPE_LABEL, REC_STATUS } from '@/lib/format';
-import { useTenant, ROLE_LABEL } from '@/lib/tenant';
+import { useTenant, ROLE_LABEL, ROLE_DESC } from '@/lib/tenant';
 import { Card, Badge, EmptyState, Spinner, ErrorBox, btn, input } from '@/components/ui';
 
 type Rec = {
   id: string; asin: string; type: string; title: string | null; rationale: string | null;
   current_value: number | null; proposed_value: number | null; expected_impact: number | null;
-  risk_score: number; required_approval_level: string; status: string; created_at: string;
+  risk_score: number; approval_tier: string; status: string; created_at: string;
   submitted_at: string | null; approved_at: string | null; rejected_at: string | null; executed_at: string | null;
   rejection_reason: string | null; rollback_reason: string | null;
+  created_by: string | null; submitted_by: string | null;
   amazon_skus: { title: string } | null;
 };
 
 const STATUS_ORDER = ['pending_approval', 'draft', 'approved', 'executed', 'rejected', 'rolled_back'];
 const LEVEL_HINT: Record<string, string> = {
-  L0: 'Tự động / xác nhận nhanh – Operator trở lên',
-  L1: 'Operator hoặc Owner duyệt',
-  L2: 'Chỉ Owner duyệt',
+  L0: 'Cấp duyệt L0 – Operator trở lên',
+  L1: 'Cấp duyệt L1 – Ops Lead / Owner',
+  L2: 'Cấp duyệt L2 – Owner',
 };
 
 export default function RecommendationsList() {
   const params = useSearchParams();
-  const { tenant, canWrite, canApprove } = useTenant();
+  const { tenant, user, canWrite, canApprove, can } = useTenant();
   const [recs, setRecs] = React.useState<Rec[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -36,7 +37,7 @@ export default function RecommendationsList() {
   const [status, setStatus] = React.useState('all');
   const [type, setType] = React.useState('all');
   const [asin, setAsin] = React.useState(params.get('asin') ?? '');
-  const [reasonFor, setReasonFor] = React.useState<{ id: string; kind: 'rejected' | 'rolled_back' } | null>(null);
+  const [reasonFor, setReasonFor] = React.useState<{ id: string; kind: 'rejected' | 'rolled_back' | 'sod_override' } | null>(null);
 
   const load = React.useCallback(async () => {
     if (!tenant) return;
@@ -61,6 +62,7 @@ export default function RecommendationsList() {
     const patch: Record<string, unknown> = { status: next };
     if (next === 'rejected') patch.rejection_reason = reason;
     if (next === 'rolled_back') patch.rollback_reason = reason;
+    if (next === 'sod_override') { patch.status = 'approved'; patch.sod_override_reason = reason; }
     const { error: e } = await supabase.from('recommendations').update(patch).eq('id', id);
     setBusy(null);
     if (e) setError(friendly(e.message)); else load();
@@ -83,9 +85,7 @@ export default function RecommendationsList() {
       {tenant && (
         <p className="text-xs text-gray-500 mb-3">
           Bạn là <b>{ROLE_LABEL[tenant.role]}</b> của {tenant.name}
-          {tenant.role === 'viewer' && ' – chỉ xem, không thao tác được.'}
-          {tenant.role === 'operator' && ' – duyệt được cấp L0/L1; cấp L2 cần Owner.'}
-          {tenant.role === 'owner' && ' – duyệt được mọi cấp.'}
+          {' – '}{ROLE_DESC[tenant.role]}. Người tạo/gửi không tự duyệt khuyến nghị của mình.
         </p>
       )}
 
@@ -116,8 +116,13 @@ export default function RecommendationsList() {
             const st = REC_STATUS[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-700' };
             const risk = Number(r.risk_score);
             const isBusy = busy === r.id;
-            const allowed = canApprove(r.required_approval_level);
-            const lockMsg = !canWrite ? 'Vai trò Viewer không thao tác được' : !allowed ? `Cấp ${r.required_approval_level} cần Owner duyệt` : null;
+            const allowed = canApprove(r.approval_tier);
+            const isMaker = !!user && (r.created_by === user.id || r.submitted_by === user.id);
+            const sodBlocked = isMaker && !can('policy.override');
+            const lockMsg = !canWrite ? 'Vai trò của bạn không thao tác được'
+              : !allowed ? `Cấp duyệt ${r.approval_tier} cần quyền cao hơn`
+              : isMaker && r.status === 'pending_approval' ? 'Bạn là người tạo/gửi – cần người khác duyệt (SoD)'
+              : null;
             return (
               <Card key={r.id} className="p-5">
                 <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -126,7 +131,7 @@ export default function RecommendationsList() {
                       <Badge className="bg-indigo-50 text-indigo-700 ring-indigo-600/20">{REC_TYPE_LABEL[r.type] ?? r.type}</Badge>
                       <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${st.cls}`}>{st.label}</span>
                       <Badge className="bg-gray-50 text-gray-600 ring-gray-500/20" >
-                        <span title={LEVEL_HINT[r.required_approval_level]}>Cấp duyệt {r.required_approval_level}</span>
+                        <span title={LEVEL_HINT[r.approval_tier]}>Cấp duyệt {r.approval_tier}</span>
                       </Badge>
                       <span className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('vi-VN')}</span>
                     </div>
@@ -148,7 +153,7 @@ export default function RecommendationsList() {
                   <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-2">
                     {r.status === 'draft' && <button className={btn.primary} disabled={isBusy} onClick={() => transition(r.id, 'pending_approval')}>Gửi duyệt</button>}
                     {r.status === 'pending_approval' && (<>
-                      <button className={btn.success} disabled={isBusy || !allowed} onClick={() => transition(r.id, 'approved')}>✓ Phê duyệt</button>
+                      <button className={btn.success} disabled={isBusy || !allowed || sodBlocked} onClick={() => (isMaker ? setReasonFor({ id: r.id, kind: 'sod_override' }) : transition(r.id, 'approved'))} title={isMaker ? 'Override SoD – cần lý do' : ''}>{isMaker ? '✓ Duyệt (override, cần lý do)' : '✓ Phê duyệt'}</button>
                       <button className={btn.danger} disabled={isBusy || !allowed} onClick={() => setReasonFor({ id: r.id, kind: 'rejected' })}>Từ chối…</button>
                     </>)}
                     {r.status === 'approved' && (<>
@@ -174,7 +179,7 @@ export default function RecommendationsList() {
 
       {reasonFor && (
         <ReasonDialog
-          title={reasonFor.kind === 'rejected' ? 'Lý do từ chối' : 'Lý do hoàn tác'}
+          title={reasonFor.kind === 'rejected' ? 'Lý do từ chối' : reasonFor.kind === 'sod_override' ? 'Lý do override SoD (tự duyệt khuyến nghị của mình)' : 'Lý do hoàn tác'}
           onCancel={() => setReasonFor(null)}
           onSubmit={(reason) => { const { id, kind } = reasonFor; setReasonFor(null); transition(id, kind, reason); }}
         />

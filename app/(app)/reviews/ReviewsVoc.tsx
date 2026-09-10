@@ -27,7 +27,8 @@ const DSTATUS: Record<string, { label: string; cls: string }> = { draft: { label
 const Stars = ({ n }: { n: number }) => <span className={`tabular-nums font-semibold ${n <= 2 ? 'text-red-600' : n === 3 ? 'text-amber-600' : 'text-emerald-700'}`}>{n}★</span>;
 
 export default function ReviewsVoc() {
-  const { tenant, canWrite, user } = useTenant();
+  const { tenant, can, user } = useTenant();
+  const canWrite = can('voc.triage');
   const [tab, setTab] = React.useState<'triage' | 'topics' | 'tickets' | 'drafts' | 'qa'>('triage');
   const [reviews, setReviews] = React.useState<Review[]>([]);
   const [topics, setTopics] = React.useState<Topic[]>([]);

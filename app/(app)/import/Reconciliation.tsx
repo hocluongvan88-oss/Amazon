@@ -11,7 +11,8 @@ type Check = { id: string; period_start: string; period_end: string; sc_revenue:
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function Reconciliation() {
-  const { tenant, canWrite } = useTenant();
+  const { tenant, can } = useTenant();
+  const canWrite = can('data.import');
   const [list, setList] = React.useState<Check[]>([]);
   const [start, setStart] = React.useState(() => iso(new Date(Date.now() - 30 * 86400000)));
   const [end, setEnd] = React.useState(() => iso(new Date(Date.now() - 86400000)));

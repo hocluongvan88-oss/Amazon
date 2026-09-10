@@ -23,7 +23,7 @@ type Sku = {
 };
 type Rec = {
   id: string; asin: string; type: string; title: string | null; status: string;
-  risk_score: number; expected_impact: number | null; required_approval_level: string;
+  risk_score: number; expected_impact: number | null; approval_tier: string;
 };
 type Exc = { id: string; code: string; message: string; asin: string | null; resolved: boolean; overdue: boolean; hours_left: number | null; snoozed: boolean };
 type Metric = { sku_id: string; velocity_7d: number | null; velocity_change_pct: number | null; days_of_cover: number | null; stockout_eta: string | null; inventory_health: string; coverage_days_30: number };
@@ -51,7 +51,7 @@ export default function Dashboard() {
       setLoading(true);
       const [s, r, e, mt, td] = await Promise.all([
         supabase.from('amazon_skus').select('*').eq('tenant_id', tid).neq('status', 'archived').limit(LIMITS.maxFetch),
-        supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,required_approval_level').eq('tenant_id', tid).in('status', ['draft', 'pending_approval', 'approved']).limit(LIMITS.maxFetch),
+        supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,approval_tier').eq('tenant_id', tid).in('status', ['draft', 'pending_approval', 'approved']).limit(LIMITS.maxFetch),
         supabase.from('v_exception_queue').select('id,code,message,asin,resolved,overdue,hours_left,snoozed').eq('tenant_id', tid).eq('resolved', false).order('code').order('due_at').limit(LIMITS.maxFetch),
         supabase.rpc('sku_metrics', { t: tid }),
         supabase.rpc('tenant_daily', { t: tid, days: 90 }),
@@ -161,7 +161,7 @@ export default function Dashboard() {
                       <p className="text-xs text-gray-500 truncate">{r.asin} · {sku?.title ?? ''}</p>
                     </div>
                     <Badge className="bg-gray-50 text-gray-700 ring-gray-500/20 hidden sm:inline-flex">{REC_TYPE_LABEL[r.type] ?? r.type}</Badge>
-                    <Badge className="bg-gray-50 text-gray-700 ring-gray-500/20">{r.required_approval_level}</Badge>
+                    <Badge className="bg-gray-50 text-gray-700 ring-gray-500/20">{r.approval_tier}</Badge>
                     <span className="text-sm font-semibold text-emerald-700 w-24 text-right">
                       {r.expected_impact != null ? `+${usd(r.expected_impact, 0)}` : '—'}
                     </span>

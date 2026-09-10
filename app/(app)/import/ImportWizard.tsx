@@ -14,7 +14,8 @@ type RowResult = { row: number; asin: string; message: string };
 type Job = { id: string; kind: ImportKind; filename: string | null; rows_total: number; rows_ok: number; rows_failed: number; created_at: string; errors: RowResult[] | null };
 
 export default function ImportWizard() {
-  const { tenant, canWrite } = useTenant();
+  const { tenant, can } = useTenant();
+  const canWrite = can('data.import');
   const [kind, setKind] = React.useState<ImportKind>('sales');
   const [parsed, setParsed] = React.useState<Parsed | null>(null);
   const [map, setMap] = React.useState<Record<string, string>>({});
@@ -196,7 +197,7 @@ export default function ImportWizard() {
   }
 
   if (!tenant) return <Spinner />;
-  if (!canWrite) return <ErrorBox message="Vai trò Viewer không được nhập dữ liệu." />;
+  if (!canWrite) return <ErrorBox message="Vai trò của bạn không có quyền nhập dữ liệu (data.import)." />;
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
@@ -205,13 +206,16 @@ export default function ImportWizard() {
         <Card>
           <CardHeader title="1. Chọn loại dữ liệu" />
           <div className="p-5 grid sm:grid-cols-2 gap-2">
-            {(Object.values(SCHEMAS) as ImportSchema[]).map((s) => (
-              <button key={s.kind} onClick={() => { setKind(s.kind); setParsed(null); setResult(null); }}
-                className={`text-left p-3 rounded-lg border transition ${kind === s.kind ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <p className="font-medium text-gray-900">{s.title}</p>
+            {(Object.values(SCHEMAS) as ImportSchema[]).map((s) => {
+              const needCogs = s.kind === 'cogs' && !can('cogs.write');
+              return (
+              <button key={s.kind} disabled={needCogs} title={needCogs ? 'Chỉ Finance/Owner (cogs.write) được nhập giá vốn' : ''} onClick={() => { setKind(s.kind); setParsed(null); setResult(null); }}
+                className={`text-left p-3 rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed ${kind === s.kind ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <p className="font-medium text-gray-900">{s.title}{needCogs && <span className="ml-2 text-xs font-normal text-gray-500">🔒 Finance</span>}</p>
                 <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
               </button>
-            ))}
+              );
+            })}
           </div>
           <div className="px-5 pb-5 text-sm text-gray-600">
             <p><b>Nguồn:</b> {schema.source}</p>

@@ -21,7 +21,8 @@ const initial: Form = {
 
 export default function AddSkuForm() {
   const router = useRouter();
-  const { tenant, canWrite } = useTenant();
+  const { tenant, can } = useTenant();
+  const canWrite = can('sku.write');
   const [f, setF] = React.useState<Form>(initial);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function AddSkuForm() {
     router.push('/'); router.refresh();
   }
 
-  if (tenant && !canWrite) return <ErrorBox message="Vai trò Viewer không được thêm SKU." />;
+  if (tenant && !canWrite) return <ErrorBox message="Vai trò của bạn không có quyền thêm SKU (sku.write)." />;
 
   return (
     <form onSubmit={onSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">

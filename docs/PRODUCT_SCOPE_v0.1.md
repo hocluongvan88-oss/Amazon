@@ -89,8 +89,8 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 ## 7. Backlog
 
 ### P0 (trước khi mở rộng pilot)
-1. Permission theo hành động (`permissions`, `has_permission`, 4 role mới) — thay thế so sánh role cứng.
-2. Đổi tên `required_approval_level` → `approval_tier`; định nghĩa L0–L5 trong app & docs.
+1. ✅ Permission theo hành động (`012_permissions.sql`: 7 role, `has_permission`, delegation có thời hạn, SoD nghiêm) — thay thế so sánh role cứng.
+2. ✅ `required_approval_level` → `approval_tier`; `actions.automation_level` + `policy_register.max_automation_level` (L3 mặc định, L4 phải bật).
 3. Data connector abstraction: `data_sources`, `ingestion_runs`, freshness monitor; CSV là 1 connector.
 4. Product Fact Sheet + evidence.
 5. Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow.

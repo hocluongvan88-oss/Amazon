@@ -6,27 +6,26 @@ import React from 'react';
 import { useTenant, ROLE_LABEL } from '@/lib/tenant';
 import { Card, btn } from '@/components/ui';
 
-const NAV = [
+const NAV: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: '/', label: 'Tổng quan', icon: '▦' },
   { href: '/recommendations', label: 'Gợi ý & phê duyệt', icon: '✓' },
   { href: '/exceptions', label: 'Ngoại lệ', icon: '!' },
   { href: '/profit-bridge', label: 'Profit bridge', icon: '⇅' },
   { href: '/inventory', label: 'Tồn kho', icon: '▤' },
   { href: '/reviews', label: 'Đánh giá / VOC', icon: '★' },
-  { href: '/add-sku', label: 'Thêm SKU', icon: '+', write: true },
-  { href: '/import', label: 'Nhập dữ liệu', icon: '⇪', write: true },
+  { href: '/add-sku', label: 'Thêm SKU', icon: '+', perm: 'sku.write' },
+  { href: '/import', label: 'Nhập dữ liệu', icon: '⇪', perm: 'data.import' },
   { href: '/actions', label: 'Lệnh thực thi', icon: '⚡' },
   { href: '/measurement', label: 'Đo lường', icon: '◎' },
   { href: '/audit', label: 'Nhật ký', icon: '≡' },
   { href: '/settings/policy', label: 'Chính sách', icon: '§' },
-  { href: '/settings/members', label: 'Thành viên', icon: '⚙', owner: true },
+  { href: '/settings/members', label: 'Thành viên', icon: '⚙', perm: 'member.manage' },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, tenant, tenants, setTenantId, loading, canWrite } = useTenant();
-  const isOwner = tenant?.role === 'owner';
-  const nav = NAV.filter((n) => (!n.write || canWrite) && (!n.owner || isOwner));
+  const { user, tenant, tenants, setTenantId, loading, can } = useTenant();
+  const nav = NAV.filter((n) => !n.perm || can(n.perm));
 
   return (
     <div className="min-h-screen flex">

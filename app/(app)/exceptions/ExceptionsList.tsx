@@ -28,7 +28,8 @@ export const RULE_LABEL: Record<string, string> = {
 };
 
 export default function ExceptionsList() {
-  const { tenant, canWrite, user } = useTenant();
+  const { tenant, can, user } = useTenant();
+  const canWrite = can('exception.resolve');
   const [items, setItems] = React.useState<Exc[]>([]);
   const [members, setMembers] = React.useState<Member[]>([]);
   const [prec, setPrec] = React.useState<Prec[]>([]);

@@ -25,7 +25,7 @@ type Metrics = {
   tacos_30: number | null; acos_30: number | null; cvr_30: number | null; ad_spend_30: number | null;
   last_sale_date: string | null; days_since_last_sale: number | null; snapshots_total: number; first_snapshot: string | null; last_snapshot: string | null;
 };
-type Rec = { id: string; type: string; title: string | null; status: string; risk_score: number; expected_impact: number | null; required_approval_level: string; created_at: string };
+type Rec = { id: string; type: string; title: string | null; status: string; risk_score: number; expected_impact: number | null; approval_tier: string; created_at: string };
 type Exc = { id: string; code: string; message: string; resolved: boolean; created_at: string };
 type Review = { id: string; rating: number; title: string | null; body: string; verified_purchase: boolean; reviewed_at: string | null; created_at: string };
 type Cogs = { id: string; effective_from: string; cogs: number; landed_cost: number | null; source: string; note: string | null };
@@ -39,7 +39,8 @@ const HEALTH: Record<string, { label: string; cls: string }> = {
 };
 
 export default function SkuDetail({ id }: { id: string }) {
-  const { tenant, canWrite } = useTenant();
+  const { tenant, can } = useTenant();
+  const canWrite = can('sku.write');
   const [sku, setSku] = React.useState<Sku | null>(null);
   const [m, setM] = React.useState<Metrics | null>(null);
   const [daily, setDaily] = React.useState<DailyPoint[]>([]);
@@ -63,7 +64,7 @@ export default function SkuDetail({ id }: { id: string }) {
       supabase.from('amazon_skus').select('*').eq('id', id).eq('tenant_id', tenant.id).maybeSingle(),
       supabase.rpc('sku_metrics', { t: tenant.id, asof: new Date().toISOString().slice(0, 10), only_sku: id }),
       supabase.from('sku_daily_snapshots').select('date,units,revenue,price,contribution_profit,inventory_qty,reorder_point,ad_spend,ad_sales').eq('sku_id', id).gte('date', since).order('date').limit(LIMITS.chartDays),
-      supabase.from('recommendations').select('id,type,title,status,risk_score,expected_impact,required_approval_level,created_at').eq('sku_id', id).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
+      supabase.from('recommendations').select('id,type,title,status,risk_score,expected_impact,approval_tier,created_at').eq('sku_id', id).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
       supabase.from('exceptions').select('id,code,message,resolved,created_at').eq('tenant_id', tenant.id).eq('asin', asin).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
       supabase.from('raw_reviews').select('id,rating,title,body,verified_purchase,reviewed_at,created_at').eq('tenant_id', tenant.id).eq('asin', asin).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
       supabase.from('cogs_history').select('id,effective_from,cogs,landed_cost,source,note').eq('sku_id', id).order('effective_from', { ascending: false }).limit(LIMITS.detailItems),
@@ -189,7 +190,7 @@ export default function SkuDetail({ id }: { id: string }) {
                 <Badge className="bg-indigo-50 text-indigo-700 ring-indigo-600/20">{REC_TYPE_LABEL[r.type] ?? r.type}</Badge>
                 <span className={`text-xs px-2 py-0.5 rounded-md ${REC_STATUS[r.status]?.cls ?? ''}`}>{REC_STATUS[r.status]?.label ?? r.status}</span>
                 <span className="flex-1 text-gray-900 truncate">{r.title}</span>
-                <span className="text-xs text-gray-500">{r.required_approval_level} · rủi ro {Number(r.risk_score).toFixed(0)}</span>
+                <span className="text-xs text-gray-500">{r.approval_tier} · rủi ro {Number(r.risk_score).toFixed(0)}</span>
                 {r.expected_impact != null && <span className="text-emerald-700 font-medium">+{usd(r.expected_impact, 0)}/th</span>}
                 <Link href={`/recommendations?asin=${sku.asin}`} className={btn.ghost}>Mở →</Link>
               </li>
