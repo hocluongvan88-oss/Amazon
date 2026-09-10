@@ -4,31 +4,42 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 
 | Thứ tự | File | Nội dung | Khi nào |
 |---|---|---|---|
-| 1 | `001_schema.sql` | Bảng, index, trigger, RLS, view `v_sku_overview` | Bắt buộc, chạy đầu tiên |
+| 1 | `001_schema.sql` | Bảng, index, trigger, RLS cơ bản, view | Bắt buộc |
 | 2 | `002_seed.sql` | 8 SKU mẫu + review + gợi ý + ngoại lệ | Khuyến nghị cho pilot/demo |
-| 3 | `003_lock_down.sql` | Gỡ quyền `anon` | Chỉ khi app đã có đăng nhập |
+| 3 | `004_tenancy_auth.sql` | **Sprint 0**: tenants, `tenant_id` mọi bảng, RLS theo tenant, guard chuyển trạng thái theo cấp duyệt, audit trigger, gỡ quyền `anon` | Bắt buộc trước khi cho người dùng thật vào |
 
-Cả 3 file đều chạy lại được nhiều lần mà không lỗi.
+Cả 3 file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
 
-## Bảng
+## Sau khi chạy 004 – thiết lập owner đầu tiên (1 lần)
 
-- `profiles` – hồ sơ user + role (`admin` / `operator` / `viewer`), tự tạo khi user đăng ký
-- `amazon_skus` – danh mục ASIN, giá, COGS, phí; `contribution_profit` tự tính
-- `raw_reviews` – review thô
-- `recommendations` – gợi ý (price_adjust / replenish / review_response / inventory_transfer), luồng duyệt L0/L1/L2
-- `exceptions` – hàng đợi ngoại lệ P0–P3
-- `audit_log` – nhật ký hành động
+1. Supabase → **Authentication → Providers → Email**: bật *Email* (magic link mặc định bật; bật thêm *Password* nếu muốn).
+2. Supabase → **Authentication → URL Configuration**: thêm `https://<domain-app>/auth/callback` (và `http://localhost:3000/auth/callback`) vào *Redirect URLs*.
+3. Mở app → `/login` → đăng nhập bằng email của bạn 1 lần (để `auth.users` có bản ghi). Bạn sẽ thấy màn "Tài khoản chưa thuộc brand nào".
+4. Chạy trong SQL Editor:
+   ```sql
+   INSERT INTO public.tenant_members (tenant_id, user_id, role)
+   SELECT t.id, u.id, 'owner'
+   FROM public.tenants t, auth.users u
+   WHERE t.slug = 'vexim' AND lower(u.email) = lower('you@example.com')
+   ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = 'owner';
+   ```
+5. Tải lại app. Từ đây thêm thành viên khác qua **Thành viên** (người đó cần đăng nhập 1 lần trước).
 
-## Lưu ý về RLS
+## Mô hình quyền
 
-App hiện **chưa có đăng nhập** và dùng anon key, nên `001_schema.sql` mở quyền cho role `anon`
-trên `amazon_skus` / `recommendations` (đọc + ghi) và `raw_reviews` / `exceptions` (chỉ đọc).
-Đây là chế độ pilot — **không dùng cho production**. Khi bật Auth hãy chạy `003_lock_down.sql`.
+| Vai trò (theo brand) | Xem | Thêm/sửa SKU, gửi gợi ý, xử lý ngoại lệ | Duyệt L0/L1 | Duyệt L2 | Quản lý thành viên |
+|---|---|---|---|---|---|
+| viewer | ✅ | ❌ | ❌ | ❌ | ❌ |
+| operator | ✅ | ✅ | ✅ | ❌ | ❌ |
+| owner | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Quyền được kiểm tra **ở database** (RLS + trigger `guard_recommendation_transition`), UI chỉ ẩn/khoá nút cho tiện. Từ chối/hoàn tác bắt buộc có lý do. Mọi insert/update/delete trên `amazon_skus`, `recommendations`, `exceptions` được ghi vào `audit_log` (ai, khi nào, before/after).
+
+## Thêm brand mới
+```sql
+INSERT INTO public.tenants (slug, name, marketplace) VALUES ('brand-b', 'Brand B', 'US');
+-- rồi thêm owner cho brand đó như bước 4 ở trên, đổi slug.
+```
 
 ## Biến môi trường
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
-```
-Lấy tại Supabase → Project Settings → API. Thêm vào `.env.local` (local) và Vercel → Settings → Environment Variables (deploy), rồi redeploy.
+Xem `.env.example`. Thêm vào `.env.local` (local) và Vercel → Settings → Environment Variables (deploy), rồi redeploy.

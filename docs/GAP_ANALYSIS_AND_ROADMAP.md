@@ -52,13 +52,14 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 
 ## 3. Kế hoạch bổ sung (map theo roadmap 14 tuần)
 
-### Sprint 0 – Dọn nền (ngay, ~2‑3 ngày)
-- [ ] Xoá thư mục `web/` trùng lặp; một codebase duy nhất.
-- [ ] Bật **Supabase Auth** (magic link), trang `/login`, middleware bảo vệ route, hiển thị user/role ở sidebar.
-- [ ] Chạy `003_lock_down.sql`, gỡ policy `anon`.
-- [ ] Migration `004_tenancy.sql`: bảng `tenants` (brand), `tenant_members(tenant_id,user_id,role)`; thêm `tenant_id` vào mọi bảng nghiệp vụ; RLS theo `tenant_id` ∈ tenants của user. Bộ chọn brand trên UI.
-- [ ] Ghi `audit_log` qua trigger trên `recommendations`, `exceptions`, `amazon_skus` (ai, hành động, before/after JSON).
-- [ ] Ghi `approved_by`, `rejected_reason` khi duyệt/từ chối; ẩn nút nếu role không đủ cấp (L1 → operator+, L2 → admin).
+### Sprint 0 – Dọn nền ✅ (hoàn thành 2026‑09‑10)
+- [x] Xoá thư mục `web/` trùng lặp; một codebase duy nhất.
+- [x] Bật **Supabase Auth** (magic link + mật khẩu), trang `/login`, `proxy.ts` bảo vệ route, user/role/brand ở sidebar.
+- [x] Gỡ policy `anon` (gộp vào `004`).
+- [x] Migration `004_tenancy_auth.sql`: `tenants`, `tenant_members(tenant_id,user_id,role)`; `tenant_id` mọi bảng; RLS theo tenant; bộ chọn brand trên UI.
+- [x] `audit_log` tự ghi qua trigger trên `recommendations`, `exceptions`, `amazon_skus` (ai, hành động, before/after, diff). Trang **Nhật ký**.
+- [x] Trigger `guard_recommendation_transition`: kiểm tra chuyển trạng thái hợp lệ, cấp duyệt theo role (L0/L1 → operator+, L2 → owner), bắt buộc lý do từ chối/hoàn tác, tự ghi `submitted_by/approved_by/rejected_by/executed_by`. UI khoá nút + modal lý do + timeline.
+- [x] Trang **Thành viên** (owner): thêm theo email, đổi role, gỡ; chặn gỡ owner cuối.
 
 ### Tuần 1‑2 – Discovery & Data contract
 - [ ] Migration `005_data_contract.sql`: bảng `cogs_history`, `supplier_lead_times`, `policy_register` (ngưỡng, cấp duyệt theo action type), `kpi_baseline`.

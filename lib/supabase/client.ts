@@ -1,16 +1,9 @@
 /**
- * Supabase Client for Vexim Amazon Managed Operations dashboard
- *
- * Usage:
- *   import { supabase } from '@/lib/supabase/client';
- *   const { data, error } = await supabase.from('amazon_skus').select('*');
- *
- * Environment variables required:
- *   NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
- *   NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
+ * Supabase client cho trình duyệt (client components).
+ * Dùng @supabase/ssr để session được lưu trong cookie → server đọc được.
  */
-
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -23,23 +16,19 @@ function getClient(): SupabaseClient {
   if (!client) {
     if (!url || !key) {
       throw new Error(
-        'Thiếu biến môi trường Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY (trong .env.local khi chạy local, hoặc Vercel → Settings → Environment Variables khi deploy).'
+        'Thiếu biến môi trường Supabase. Hãy thêm NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY.'
       );
     }
-    client = createClient(url, key);
+    client = createBrowserClient(url, key);
   }
   return client;
 }
 
-/**
- * Lazily-initialised client. The real client is only created on first use,
- * so importing this module during `next build` (prerender) does not throw
- * when the env vars are not available.
- */
+/** Lazy proxy: không throw khi import lúc build. */
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
-  get(_target, prop, receiver) {
+  get(_t, prop, receiver) {
     const real = getClient();
-    const value = Reflect.get(real, prop, receiver);
-    return typeof value === 'function' ? value.bind(real) : value;
+    const v = Reflect.get(real, prop, receiver);
+    return typeof v === 'function' ? v.bind(real) : v;
   },
 });
