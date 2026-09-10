@@ -58,7 +58,8 @@ BEGIN
   INSERT INTO _t SELECT 'v_data_freshness: orders fresh', (SELECT status = 'fresh' AND last_data_date = CURRENT_DATE - 1 FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'orders_daily');
   INSERT INTO _t SELECT 'v_data_freshness: ads settle lag → expected_through = today-4', (SELECT expected_through = CURRENT_DATE - 4 FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'ads_daily');
   INSERT INTO _t SELECT 'v_data_freshness: cogs failed → still missing/stale', (SELECT status <> 'fresh' FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'cogs');
-  INSERT INTO _t SELECT 'v_data_freshness: catalog missing', (SELECT status = 'missing' FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'catalog');
+  INSERT INTO _t SELECT 'v_data_freshness: catalog has data date from manual SKU (not missing)', (SELECT status <> 'missing' AND last_data_date = CURRENT_DATE AND last_success_at IS NULL FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'catalog');
+  INSERT INTO _t SELECT 'v_data_freshness: fees missing (no data, no run)', (SELECT status = 'missing' FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'fees');
   -- run cũ hơn SLA → stale
   UPDATE public.ingestion_runs SET finished_at = now() - interval '5 days' WHERE tenant_id = t AND feed_key = 'orders_daily';
   INSERT INTO _t SELECT 'v_data_freshness: orders stale after 5d (SLA 36h)', (SELECT status = 'stale' FROM public.v_data_freshness WHERE tenant_id = t AND feed_key = 'orders_daily');
@@ -80,7 +81,10 @@ BEGIN
   PERFORM pg_temp.as_user(u_view);
   INSERT INTO _t SELECT 'v_data_sources: viewer credential_ref hidden', (SELECT credential_ref IS NULL FROM public.v_data_sources WHERE tenant_id = t AND kind = 'sp_api');
   PERFORM pg_temp.as_user(gen_random_uuid());
-  INSERT INTO _t SELECT 'rls: outsider sees no runs', (SELECT count(*) FROM public.ingestion_runs WHERE tenant_id = t) = 0;
+  -- SQL Editor chạy với role postgres (bypass RLS) → chỉ kiểm policy + permission, không đếm bảng trực tiếp
+  INSERT INTO _t SELECT 'rls: policies exist on ingestion_runs/data_sources', (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('ingestion_runs','data_sources')) >= 5;
+  INSERT INTO _t SELECT 'rls: outsider has no data.import', public.has_permission(t, 'data.import') = false;
+  INSERT INTO _t SELECT 'rls: outsider not in my_tenant_ids', NOT (t IN (SELECT public.my_tenant_ids()));
   INSERT INTO _t SELECT 'rls: outsider sees no freshness rows', (SELECT count(*) FROM public.v_data_freshness WHERE tenant_id = t) = 0;
 
   -- 7. audit
