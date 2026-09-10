@@ -17,13 +17,13 @@ export default function DashboardPage() {
   React.useEffect(() => {
     async function fetchSkus() {
       try {
-        const { data, err } = await supabase
+        const { data, error: fetchError } = await supabase
           .from('amazon_skus')
           .select('*')
           .order('contribution_profit', { ascending: false });
 
-        if (err) throw err;
-        setSkus(data);
+        if (fetchError) throw fetchError;
+        setSkus(data ?? []);
       } catch (e: any) {
         setError(e.message);
       } finally {
