@@ -54,7 +54,7 @@ Workflow: **Product Facts → Analysis → Opportunity → Draft (Listing Copilo
 
 ### 2.3 Listing Copilot & A+ Builder
 - `content_versions(sku_id, kind ∈ title|bullets|description|backend|aplus, version, body jsonb, brief, created_by, status ∈ draft|qa_passed|approved|published|rolled_back, parent_version)`.
-- A+ dạng template module (Standard Image & Text, Comparison Chart, Four Image & Text…) — chưa cần editor kéo thả.
+- A+ soạn theo **đúng module của Amazon A+ Content Manager** (17 module: Image Header with Text, Single Image & Highlights, Technical Specifications, Comparison Chart, Four Image & Text…; Standard ≤ 5 module, Premium ≤ 7 khi bật cờ). Giới hạn ký tự/kích thước ảnh/alt‑text theo spec thật (`aplus_module_specs`, `lib/aplus.ts`). Đầu ra là **gói bàn giao** copy 1:1 vào Seller Central — hệ thống không tự publish A+.
 - Image brief / creative brief là output text kèm version.
 
 ### 2.4 Compliance Gate
@@ -98,7 +98,7 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 7. ✅ KPI content/AI quality + sổ đo lường (`016_measurement_kpi.sql`): `measurements` lưu baseline/đối chứng/thay đổi đồng thời/confidence, đóng băng sau 28 ngày; quyết định: **không chia attribution khi confounded**, chỉ bản đo moderate/high cộng vào North Star; `content_kpi`, `ai_quality_kpi`, `pilot_scorecard_v2`.
 
 ### P1 (trong pilot 90 ngày)
-Listing Copilot (AI draft từ facts) · ✅ A+ template builder (`017_aplus_cvr.sql`) · version compare & rollback · ✅ before/after CVR view (`content_cvr_series` + biểu đồ có đối chứng) · evidence panel cho recommendation · deep link/checklist · ads guardrail liên kết inventory & content health · review topic → content/QA task.
+Listing Copilot (AI draft từ facts) · ✅ A+ template builder (`017_aplus_cvr.sql`) · ✅ A+ module fidelity + preview + gói bàn giao (`018_aplus_fidelity.sql`) · version compare & rollback · ✅ before/after CVR view (`content_cvr_series` + biểu đồ có đối chứng) · evidence panel cho recommendation · deep link/checklist · ads guardrail liên kết inventory & content health · review topic → content/QA task.
 
 ### P2 (sau khi chứng minh hiệu quả)
 SP‑API/Ads API write‑back giới hạn · bounded auto bid/budget · image brief & asset generation có duyệt · experiment framework · multi‑marketplace localization · auto publish theo permission + policy gate.

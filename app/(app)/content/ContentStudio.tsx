@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { CvrBeforeAfterChart, type CvrPoint } from '@/components/charts';
+import AplusEditor, { AplusPreview } from '@/components/AplusEditor';
+import { moduleToText, handoffMarkdown, upgradeLegacyModule, type ModuleData } from '@/lib/aplus';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { LIMITS } from '@/lib/limits';
@@ -45,17 +47,16 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   superseded: { label: 'Bị thay thế', cls: 'bg-gray-100 text-gray-500' },
 };
 const SOURCE_LABEL: Record<string, string> = { manual: 'Nhập tay', document: 'Tài liệu', csv: 'CSV', sp_api: 'SP‑API', lab_test: 'Kết quả kiểm nghiệm', supplier: 'Nhà cung cấp', brand_guideline: 'Brand guideline' };
-const APLUS_TYPES = ['standard_image_text', 'standard_text', 'comparison_chart', 'four_image_text', 'image_header_text', 'tech_specs'];
 
 // ---------- helpers ----------
 function emptyBody(kind: Kind): Record<string, unknown> {
   if (kind === 'bullets') return { items: [''] };
-  if (kind === 'aplus') return { modules: [{ type: 'standard_image_text', header: '', body: '', image_brief: '' }] };
+  if (kind === 'aplus') return { modules: [] };
   return { text: '' };
 }
 function bodyToText(kind: Kind, body: Record<string, unknown>): string {
   if (kind === 'bullets') return ((body.items as string[]) ?? []).map((b, i) => `${i + 1}. ${b}`).join('\n');
-  if (kind === 'aplus') return ((body.modules as { type: string; header?: string; body?: string; image_brief?: string }[]) ?? []).map((m, i) => `[${i + 1}] ${m.type}\n${m.header ?? ''}\n${m.body ?? ''}${m.image_brief ? `\n(ảnh: ${m.image_brief})` : ''}`).join('\n\n');
+  if (kind === 'aplus') return ((body.modules as ModuleData[]) ?? []).map((m, i) => moduleToText(upgradeLegacyModule(m as Record<string, unknown>), i)).join('\n\n');
   return String(body.text ?? '');
 }
 /** Diff theo dòng đơn giản (LCS) */
@@ -203,7 +204,7 @@ function SkuStudio({ sku, can, userId, tenantId, brandOk, onChanged }: { sku: Au
         {error && <div className="p-4"><ErrorBox message={error} /></div>}
         {tab === 'facts'
           ? <FactsPanel facts={facts} skuId={sku.sku_id} tenantId={tenantId} can={can} userId={userId} onChanged={refresh} onError={setError} />
-          : <VersionsPanel kind={tab} versions={versions.filter((v) => v.kind === tab)} facts={verified} skuId={sku.sku_id} tenantId={tenantId} can={can} userId={userId} brandOk={brandOk} onChanged={refresh} onError={setError} />}
+          : <VersionsPanel kind={tab} versions={versions.filter((v) => v.kind === tab)} facts={verified} skuId={sku.sku_id} skuAsin={sku.asin} skuTitle={sku.title} tenantId={tenantId} can={can} userId={userId} brandOk={brandOk} onChanged={refresh} onError={setError} />}
       </Card>
     </>
   );
@@ -285,14 +286,24 @@ function FactsPanel({ facts, skuId, tenantId, can, userId, onChanged, onError }:
 }
 
 // ============================================================
-function VersionsPanel({ kind, versions, facts, skuId, tenantId, can, userId, brandOk, onChanged, onError }: {
-  kind: Kind; versions: Version[]; facts: Fact[]; skuId: string; tenantId: string; can: (p: string) => boolean; userId: string | null; brandOk: boolean; onChanged: () => void; onError: (m: string | null) => void;
+function VersionsPanel({ kind, versions, facts, skuId, skuAsin, skuTitle, tenantId, can, userId, brandOk, onChanged, onError }: {
+  kind: Kind; versions: Version[]; facts: Fact[]; skuId: string; skuAsin: string; skuTitle: string; tenantId: string; can: (p: string) => boolean; userId: string | null; brandOk: boolean; onChanged: () => void; onError: (m: string | null) => void;
 }) {
   const [editing, setEditing] = React.useState<Version | 'new' | null>(null);
   const [compare, setCompare] = React.useState<Version | null>(null);
   const [impact, setImpact] = React.useState<Record<string, unknown> | null>(null);
   const [reasonFor, setReasonFor] = React.useState<{ id: string; status: string; field: string; title: string } | null>(null);
   const [reason, setReason] = React.useState('');
+  const [premium, setPremium] = React.useState(false);
+  const [prevOf, setPrevOf] = React.useState<{ id: string; mobile: boolean } | null>(null);
+  React.useEffect(() => {
+    if (kind !== 'aplus') return;
+    (async () => { const { data } = await supabase.from('policy_register').select('aplus_premium_enabled').eq('tenant_id', tenantId).maybeSingle(); setPremium(Boolean((data as { aplus_premium_enabled?: boolean } | null)?.aplus_premium_enabled)); })();
+  }, [kind, tenantId]);
+  function downloadHandoff(v: Version) {
+    const md = handoffMarkdown(skuAsin, skuTitle, (v.body.modules as ModuleData[]) ?? [], v.version);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `aplus-${skuAsin}-v${v.version}.md`; a.click(); URL.revokeObjectURL(a.href);
+  }
   const published = versions.find((v) => v.status === 'published');
 
   async function transition(v: Version, status: string, extra: Record<string, unknown> = {}) {
@@ -315,7 +326,7 @@ function VersionsPanel({ kind, versions, facts, skuId, tenantId, can, userId, br
       </div>
 
       {editing && (
-        <Editor kind={kind} base={editing === 'new' ? (published ?? versions[0] ?? null) : editing} isNew={editing === 'new'} facts={facts} skuId={skuId} tenantId={tenantId}
+        <Editor kind={kind} base={editing === 'new' ? (published ?? versions[0] ?? null) : editing} isNew={editing === 'new'} facts={facts} skuId={skuId} tenantId={tenantId} premium={premium}
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} onError={onError} />
       )}
 
@@ -338,7 +349,15 @@ function VersionsPanel({ kind, versions, facts, skuId, tenantId, can, userId, br
                   {published && published.id !== v.id && <button className={btn.ghost} onClick={() => setCompare(compare?.id === v.id ? null : v)}>{compare?.id === v.id ? 'Đóng diff' : 'So với bản publish'}</button>}
                   {v.published_at && <button className={btn.ghost} onClick={() => showImpact(v)}>Đo CVR</button>}
                 </div>
-                <pre className="px-4 pb-3 text-sm whitespace-pre-wrap font-sans text-gray-800">{bodyToText(kind, v.body)}</pre>
+                {kind === 'aplus' && (
+                  <div className="px-4 pb-2 flex flex-wrap gap-2 text-xs">
+                    <button className={btn.ghost} onClick={() => setPrevOf(prevOf?.id === v.id && !prevOf.mobile ? null : { id: v.id, mobile: false })}>Preview desktop</button>
+                    <button className={btn.ghost} onClick={() => setPrevOf(prevOf?.id === v.id && prevOf.mobile ? null : { id: v.id, mobile: true })}>Preview mobile</button>
+                    {(v.status === 'approved' || v.status === 'published') && <button className={btn.secondary} onClick={() => downloadHandoff(v)}>⇩ Gói bàn giao Seller Central (.md)</button>}
+                  </div>
+                )}
+                {prevOf?.id === v.id ? <div className="px-4 pb-3"><AplusPreview modules={(v.body.modules as ModuleData[]) ?? []} mobile={prevOf.mobile} /></div>
+                  : <pre className="px-4 pb-3 text-sm whitespace-pre-wrap font-sans text-gray-800">{bodyToText(kind, v.body)}</pre>}
                 {v.claims?.length > 0 && (
                   <div className="px-4 pb-3 flex flex-wrap gap-1">
                     {v.claims.map((cl, i) => { const f = facts.find((x) => x.id === cl.fact_id); return <span key={i} className={`text-xs px-2 py-0.5 rounded-full ${f ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{cl.text}{f ? ` → ${f.key}` : ' → thiếu fact'}</span>; })}
@@ -407,8 +426,8 @@ function VersionsPanel({ kind, versions, facts, skuId, tenantId, can, userId, br
 }
 
 // ============================================================
-function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, onError }: {
-  kind: Kind; base: Version | null; isNew: boolean; facts: Fact[]; skuId: string; tenantId: string; onClose: () => void; onSaved: () => void; onError: (m: string | null) => void;
+function Editor({ kind, base, isNew, facts, skuId, tenantId, premium, onClose, onSaved, onError }: {
+  kind: Kind; base: Version | null; isNew: boolean; facts: Fact[]; skuId: string; tenantId: string; premium: boolean; onClose: () => void; onSaved: () => void; onError: (m: string | null) => void;
 }) {
   const [body, setBody] = React.useState<Record<string, unknown>>(() => (base ? structuredClone(base.body) : emptyBody(kind)));
   const [claims, setClaims] = React.useState<{ text: string; fact_id: string | null }[]>(() => (base ? [...base.claims] : []));
@@ -431,7 +450,8 @@ function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, o
   }
 
   const items = (body.items as string[]) ?? [];
-  const modules = (body.modules as { type: string; header: string; body: string; image_brief: string }[]) ?? [];
+  const modules = (body.modules as ModuleData[]) ?? [];
+  const [showPrev, setShowPrev] = React.useState<'desktop' | 'mobile' | null>(null);
   const text = String(body.text ?? '');
   const [templates, setTemplates] = React.useState<{ id: string; key: string; name: string; use_case: string; description: string | null; tenant_id: string | null }[]>([]);
   const [tplMsg, setTplMsg] = React.useState<string | null>(null);
@@ -444,7 +464,7 @@ function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, o
   }, [kind]);
   async function applyTemplate(id: string) {
     if (!id) return;
-    if (modules.some((m) => m.header || m.body) && !confirm('Thay toàn bộ module hiện tại bằng template?')) return;
+    if (modules.length > 0 && !confirm('Thay toàn bộ module hiện tại bằng template?')) return;
     const { data, error } = await supabase.rpc('build_aplus_from_template', { p_template: id, p_sku: skuId });
     if (error) { onError(error.message); return; }
     const r = data as { body: Record<string, unknown>; claims: { text: string; fact_id: string | null }[]; missing_facts: string[]; brief: string };
@@ -482,20 +502,12 @@ function Editor({ kind, base, isNew, facts, skuId, tenantId, onClose, onSaved, o
               {tplMsg && <p className={`mt-2 text-xs ${tplMsg.startsWith('Thiếu') ? 'text-amber-700' : 'text-emerald-700'}`}>{tplMsg}</p>}
             </div>
           )}
-          {modules.map((m, i) => (
-            <div key={i} className="border border-gray-200 bg-white rounded-md p-3 space-y-2">
-              <div className="flex gap-2">
-                <select value={m.type} onChange={(e) => { const n = [...modules]; n[i] = { ...m, type: e.target.value }; setBody({ modules: n }); }} className={input}>
-                  {APLUS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <button className={btn.ghost} onClick={() => setBody({ modules: modules.filter((_, j) => j !== i) })}>✕</button>
-              </div>
-              <input value={m.header} onChange={(e) => { const n = [...modules]; n[i] = { ...m, header: e.target.value }; setBody({ modules: n }); }} className={input} placeholder="Tiêu đề module" />
-              <textarea value={m.body} onChange={(e) => { const n = [...modules]; n[i] = { ...m, body: e.target.value }; setBody({ modules: n }); }} className={`${input} h-20`} placeholder="Nội dung" />
-              <input value={m.image_brief} onChange={(e) => { const n = [...modules]; n[i] = { ...m, image_brief: e.target.value }; setBody({ modules: n }); }} className={input} placeholder="Image brief (mô tả ảnh cần chụp/thiết kế)" />
-            </div>
-          ))}
-          {modules.length < 7 && <button className={btn.secondary} onClick={() => setBody({ modules: [...modules, { type: 'standard_image_text', header: '', body: '', image_brief: '' }] })}>+ Module</button>}
+          <AplusEditor modules={modules as unknown as ModuleData[]} onChange={(m) => setBody({ modules: m })} facts={facts} premium={premium} />
+          <div className="flex items-center gap-2 text-xs">
+            <button className={btn.ghost} onClick={() => setShowPrev(showPrev === 'desktop' ? null : 'desktop')}>{showPrev === 'desktop' ? 'Ẩn preview' : 'Preview desktop'}</button>
+            <button className={btn.ghost} onClick={() => setShowPrev(showPrev === 'mobile' ? null : 'mobile')}>{showPrev === 'mobile' ? 'Ẩn preview' : 'Preview mobile'}</button>
+          </div>
+          {showPrev && <AplusPreview modules={modules as unknown as ModuleData[]} mobile={showPrev === 'mobile'} />}
         </div>
       )}
       {(kind === 'title' || kind === 'description' || kind === 'backend_keywords') && (

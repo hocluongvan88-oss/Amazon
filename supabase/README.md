@@ -96,6 +96,10 @@ Xem `.env.example`. Thêm vào `.env.local` (local) và Vercel → Settings → 
 
 ## Sau khi chạy 016
 Chạy `supabase/tests/016_measurement_kpi_test.sql` → FAIL = 0. UI: trang **Đo lường** có thêm 2 thẻ KPI Content / KPI chất lượng AI và **Sổ đo lường** (nút "Đo lại" gọi `measure_all` + `finalize_measurements`).
+| 17 | `018_aplus_fidelity.sql` | **P1 – A+ bám cấu trúc Amazon**: `aplus_module_specs` (17 module Standard/Premium đúng tên & giới hạn ký tự/ảnh của A+ Content Manager), `policy_register.aplus_premium_enabled` (Standard ≤ 5 module, Premium ≤ 7), `aplus_upgrade_body` (nâng body header/body cũ), `check_aplus_modules_v2` (kiểm tra đệ quy từng trường theo spec, alt‑text, giá/khuyến mãi, link ngoài, claim tuyệt đối, so sánh chỉ ASIN cùng tenant), `build_aplus_from_template` v2 (điền `{fact:key}` trong mọi trường lồng nhau), 4 template toàn cục viết lại trên module thật | Bắt buộc |
 
 ## Sau khi chạy 017
 Chạy `supabase/tests/017_aplus_cvr_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → "Draft mới" có ô **Template A+**; nút "Tác động" của bản published hiện thêm **biểu đồ CVR trước/sau** kèm đường đối chứng.
+
+## Sau khi chạy 018
+Chạy `supabase/tests/018_aplus_fidelity_test.sql` → FAIL = 0. UI: Content Studio → tab A+ → editor theo **module Amazon** (chọn module, thứ tự, đếm ký tự theo giới hạn thật, brief ảnh + alt‑text, bảng specs/so sánh), **Preview desktop/mobile**, và nút **⇩ Gói bàn giao Seller Central (.md)** trên bản approved/published để copy 1:1 vào A+ Content Manager. Bật Premium A+: `UPDATE policy_register SET aplus_premium_enabled = true WHERE tenant_id = ...`.
