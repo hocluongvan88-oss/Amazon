@@ -8,6 +8,7 @@ import { Card, btn } from '@/components/ui';
 
 const NAV: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: '/', label: 'Tổng quan', icon: '▦' },
+  { href: '/cockpit', label: 'Cockpit vận hành', icon: '◉' },
   { href: '/recommendations', label: 'Gợi ý & phê duyệt', icon: '✓' },
   { href: '/exceptions', label: 'Ngoại lệ', icon: '!' },
   { href: '/profit-bridge', label: 'Profit bridge', icon: '⇅' },
