@@ -92,8 +92,8 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 1. ✅ Permission theo hành động (`012_permissions.sql`: 7 role, `has_permission`, delegation có thời hạn, SoD nghiêm) — thay thế so sánh role cứng.
 2. ✅ `required_approval_level` → `approval_tier`; `actions.automation_level` + `policy_register.max_automation_level` (L3 mặc định, L4 phải bật).
 3. Data connector abstraction: `data_sources`, `ingestion_runs`, freshness monitor; CSV là 1 connector.
-4. Product Fact Sheet + evidence.
-5. Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow.
+4. ✅ Product Fact Sheet + evidence (`013_content_studio.sql`).
+5. ✅ Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow + version diff + rollback + `content_impact`.
 6. VoC ticket → task (5 loại) và ASIN Control Room gộp view.
 7. KPI content/AI quality vào scorecard.
 

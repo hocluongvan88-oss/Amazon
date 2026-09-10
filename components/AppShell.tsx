@@ -12,6 +12,7 @@ const NAV: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: '/exceptions', label: 'Ngoại lệ', icon: '!' },
   { href: '/profit-bridge', label: 'Profit bridge', icon: '⇅' },
   { href: '/inventory', label: 'Tồn kho', icon: '▤' },
+  { href: '/content', label: 'Content Studio', icon: '✎' },
   { href: '/reviews', label: 'Đánh giá / VOC', icon: '★' },
   { href: '/add-sku', label: 'Thêm SKU', icon: '+', perm: 'sku.write' },
   { href: '/import', label: 'Nhập dữ liệu', icon: '⇪', perm: 'data.import' },
