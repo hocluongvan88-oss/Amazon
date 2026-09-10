@@ -6,6 +6,39 @@
 -- ============================================================
 
 -- ------------------------------------------------------------
+-- 0. write_audit_log — bản chắc chắn hơn (dùng JSONB, không tham chiếu
+--    trực tiếp NEW.resolved / rec.id nên chạy được trên mọi bảng).
+--    PHẢI định nghĩa trước vì các bước dưới kích hoạt trigger audit.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.write_audit_log()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  rec_j     JSONB := to_jsonb(COALESCE(NEW, OLD));
+  act       TEXT  := lower(TG_OP);
+  before_j  JSONB := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN to_jsonb(OLD) END;
+  after_j   JSONB := CASE WHEN TG_OP IN ('UPDATE','INSERT') THEN to_jsonb(NEW) END;
+  ent_id    UUID  := NULLIF(rec_j ->> 'id', '')::uuid;
+BEGIN
+  IF TG_TABLE_NAME = 'recommendations' AND TG_OP = 'UPDATE' AND (after_j->>'status') IS DISTINCT FROM (before_j->>'status') THEN
+    act := 'status:' || (after_j->>'status');
+  ELSIF TG_TABLE_NAME = 'exceptions' AND TG_OP = 'UPDATE' AND (after_j->>'resolved') IS DISTINCT FROM (before_j->>'resolved') THEN
+    act := CASE WHEN (after_j->>'resolved')::boolean THEN 'resolve' ELSE 'reopen' END;
+  END IF;
+
+  INSERT INTO public.audit_log (tenant_id, actor_id, actor_email, entity_type, entity_id, action, before, after, payload)
+  VALUES (
+    (rec_j ->> 'tenant_id')::uuid, auth.uid(), auth.jwt() ->> 'email', TG_TABLE_NAME, ent_id, act,
+    before_j, after_j,
+    CASE WHEN TG_OP = 'UPDATE' THEN
+      (SELECT jsonb_object_agg(k, after_j -> k) FROM jsonb_object_keys(after_j) k
+        WHERE after_j -> k IS DISTINCT FROM before_j -> k AND k NOT IN ('updated_at','updated_by'))
+    END
+  );
+  RETURN COALESCE(NEW, OLD);
+END; $$;
+
+
+-- ------------------------------------------------------------
 -- 1. policy_register — ngưỡng vận hành theo brand (1 dòng / tenant)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.policy_register (
@@ -330,34 +363,6 @@ BEGIN
                     FOR EACH ROW EXECUTE FUNCTION public.write_audit_log()', t, t);
   END LOOP;
 END $$;
-
--- write_audit_log dùng rec.id — policy_register không có cột id → bọc lại
-CREATE OR REPLACE FUNCTION public.write_audit_log()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  rec_j     JSONB := to_jsonb(COALESCE(NEW, OLD));
-  act       TEXT  := lower(TG_OP);
-  before_j  JSONB := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN to_jsonb(OLD) END;
-  after_j   JSONB := CASE WHEN TG_OP IN ('UPDATE','INSERT') THEN to_jsonb(NEW) END;
-  ent_id    UUID  := NULLIF(rec_j ->> 'id', '')::uuid;
-BEGIN
-  IF TG_TABLE_NAME = 'recommendations' AND TG_OP = 'UPDATE' AND (after_j->>'status') IS DISTINCT FROM (before_j->>'status') THEN
-    act := 'status:' || (after_j->>'status');
-  ELSIF TG_TABLE_NAME = 'exceptions' AND TG_OP = 'UPDATE' AND (after_j->>'resolved') IS DISTINCT FROM (before_j->>'resolved') THEN
-    act := CASE WHEN (after_j->>'resolved')::boolean THEN 'resolve' ELSE 'reopen' END;
-  END IF;
-
-  INSERT INTO public.audit_log (tenant_id, actor_id, actor_email, entity_type, entity_id, action, before, after, payload)
-  VALUES (
-    (rec_j ->> 'tenant_id')::uuid, auth.uid(), auth.jwt() ->> 'email', TG_TABLE_NAME, ent_id, act,
-    before_j, after_j,
-    CASE WHEN TG_OP = 'UPDATE' THEN
-      (SELECT jsonb_object_agg(k, after_j -> k) FROM jsonb_object_keys(after_j) k
-        WHERE after_j -> k IS DISTINCT FROM before_j -> k AND k NOT IN ('updated_at','updated_by'))
-    END
-  );
-  RETURN COALESCE(NEW, OLD);
-END; $$;
 
 -- Kiểm tra nhanh
 SELECT * FROM public.v_data_readiness;
