@@ -82,7 +82,7 @@ export default function DataSources() {
 
       <Card>
         <CardHeader title="Độ tươi theo feed" subtitle="SLA theo hợp đồng connector (docs/CONNECTOR_CONTRACT_v0.1.md). Ads tính trên ngày đã “settle” (trễ 3 ngày theo khuyến nghị Amazon)." />
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto px-5 py-3">
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase text-gray-500 border-b">
               <tr><th className="py-2 pr-3">Feed</th><th className="pr-3">Nhóm</th><th className="pr-3">Trạng thái</th><th className="pr-3">Lần lấy thành công</th><th className="pr-3">Tuổi</th><th className="pr-3">Dữ liệu tới ngày</th><th className="pr-3">Kỳ vọng tới</th><th className="pr-3">SLA</th><th>Nguồn</th></tr>
@@ -109,6 +109,7 @@ export default function DataSources() {
       <Card>
         <CardHeader title="Nguồn kết nối" subtitle="Secret không bao giờ lưu ở đây — chỉ tên khoá trong Vault (credential_ref). Connector SP‑API/Ads API thực thi ở P2; đăng ký trước để feed/freshness sẵn sàng."
           action={canEdit && !form ? <button className={btn.secondary} onClick={() => setForm({ kind: 'sp_api', name: '', marketplace: 'ATVPDKIKX0DER', cred: '', feeds: ['orders_daily', 'inventory', 'sales_traffic_daily'] })}>+ Đăng ký nguồn API</button> : undefined} />
+        <div className="px-5 py-4">
         {form && (
           <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 grid gap-2 sm:grid-cols-2 text-sm">
             <label>Loại<select className={input} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as 'sp_api' | 'ads_api', feeds: e.target.value === 'ads_api' ? ['ads_daily'] : ['orders_daily', 'inventory', 'sales_traffic_daily'] })}><option value="sp_api">Amazon SP‑API</option><option value="ads_api">Amazon Ads API</option></select></label>
@@ -138,10 +139,12 @@ export default function DataSources() {
             ))}
           </ul>
         )}
+        </div>
       </Card>
 
       <Card>
         <CardHeader title="Lần lấy dữ liệu gần đây" subtitle="Mỗi lần nhập CSV hay kéo API đều là một ingestion_run — cùng một sổ ghi cho mọi nguồn." action={<Link href="/import" className={btn.secondary}>Nhập CSV</Link>} />
+        <div className="overflow-x-auto px-5 py-3">
         {runs.length === 0 ? <EmptyState title="Chưa có lần lấy dữ liệu nào" description="Nhập CSV ở mục Nhập dữ liệu để bắt đầu." /> : (
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase text-gray-500 border-b"><tr><th className="py-2 pr-3">Thời điểm</th><th className="pr-3">Feed</th><th className="pr-3">Trạng thái</th><th className="pr-3">Dòng OK / lỗi</th><th className="pr-3">Cửa sổ</th><th className="pr-3">Kích hoạt</th><th>Tham chiếu</th></tr></thead>
@@ -160,6 +163,7 @@ export default function DataSources() {
             </tbody>
           </table>
         )}
+        </div>
       </Card>
     </div>
   );
