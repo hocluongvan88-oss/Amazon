@@ -95,7 +95,7 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 4. ✅ Product Fact Sheet + evidence (`013_content_studio.sql`).
 5. ✅ Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow + version diff + rollback + `content_impact`.
 6. ✅ VoC ticket → task (5 loại + content_opportunity) và ASIN Control Room (`014_tasks_control_room.sql`).
-7. KPI content/AI quality vào scorecard.
+7. ✅ KPI content/AI quality + sổ đo lường (`016_measurement_kpi.sql`): `measurements` lưu baseline/đối chứng/thay đổi đồng thời/confidence, đóng băng sau 28 ngày; quyết định: **không chia attribution khi confounded**, chỉ bản đo moderate/high cộng vào North Star; `content_kpi`, `ai_quality_kpi`, `pilot_scorecard_v2`.
 
 ### P1 (trong pilot 90 ngày)
 Listing Copilot (AI draft từ facts) · A+ template builder · version compare & rollback · before/after CVR view · evidence panel cho recommendation · deep link/checklist · ads guardrail liên kết inventory & content health · review topic → content/QA task.

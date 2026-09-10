@@ -21,6 +21,7 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 Tất cả các file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
 
 | 14 | `015_connectors_freshness.sql` | **P0‑5**: `data_feeds` (catalog 9 feed: SLA, settlement lag, Amazon report type), `data_sources` (csv_manual / sp_api / ads_api; chỉ `credential_ref`, không secret), `ingestion_runs` (mọi lần lấy dữ liệu; CSV `import_jobs` tự sinh run + backfill), `v_data_freshness` / `feed_is_fresh` / `freshness_summary`, `asin_control_room_v2` (thêm freshness + signal), `upsert_data_source` (cần `policy.edit`) | Bắt buộc |
+| 15 | `016_measurement_kpi.sql` | **P0‑6**: `measurements` (baseline đóng băng, đối chứng, thay đổi đồng thời, confidence; final sau cửa sổ + 28 ngày, bất biến), `measure_subject` / `measure_all` / `finalize_measurements`, `content_kpi`, `ai_quality_kpi`, `pilot_scorecard_v2` (chỉ cộng CP từ bản đo moderate/high; confounded không chia attribution) | Bắt buộc |
 
 ## Sau khi chạy 014
 Chạy `supabase/tests/014_tasks_control_room_test.sql` → FAIL = 0. UI: menu **Hàng đợi task**; trang SKU có **ASIN Control Room**; tab Ticket VOC có nút **Tạo task →**.
@@ -91,3 +92,6 @@ INSERT INTO public.tenants (slug, name, marketplace) VALUES ('brand-b', 'Brand B
 
 ## Biến môi trường
 Xem `.env.example`. Thêm vào `.env.local` (local) và Vercel → Settings → Environment Variables (deploy), rồi redeploy.
+
+## Sau khi chạy 016
+Chạy `supabase/tests/016_measurement_kpi_test.sql` → FAIL = 0. UI: trang **Đo lường** có thêm 2 thẻ KPI Content / KPI chất lượng AI và **Sổ đo lường** (nút "Đo lại" gọi `measure_all` + `finalize_measurements`).

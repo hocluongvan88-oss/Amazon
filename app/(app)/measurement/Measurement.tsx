@@ -6,6 +6,7 @@ import { useTenant } from '@/lib/tenant';
 import { Card, CardHeader, Badge, Spinner, ErrorBox, btn, input } from '@/components/ui';
 import { usd, num } from '@/lib/format';
 import { buildPilotReport, type Scorecard, type Impact } from '@/lib/pilotReport';
+import MeasurementLedger from '@/components/MeasurementLedger';
 
 type Report = { id: string; title: string; decision: string | null; decision_note: string | null; created_at: string; markdown: string };
 
@@ -145,6 +146,8 @@ export default function Measurement() {
           </div>
         )}
       </Card>
+
+      <MeasurementLedger tenantId={tenant?.id} canWrite={canWrite} days={days} />
 
       {/* Report */}
       <Card>
