@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -84,7 +86,7 @@ export default function ProfitBridge() {
               <select value={sortKey} onChange={(e) => setSortKey(e.target.value as 'delta' | 'abs')} className="text-sm border border-gray-200 rounded-lg px-2 py-1">
                 <option value="abs">Ảnh hưởng lớn nhất</option><option value="delta">Giảm nhiều nhất</option>
               </select>} />
-            <div className="overflow-x-auto">
+            <Paged items={sorted} page={LIMITS.tablePage} label="ASIN">{(visible) => (<div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-gray-500 bg-gray-50">
                   <tr>
@@ -93,7 +95,7 @@ export default function ProfitBridge() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sorted.map((r) => (
+                  {visible.map((r) => (
                     <tr key={r.sku_id} className="hover:bg-gray-50">
                       <td className="px-4 py-2"><Link href={`/skus/${r.sku_id}`} className="hover:underline"><span className="font-mono text-xs text-gray-500">{r.asin}</span><br />{r.title}</Link></td>
                       <td className="px-2 py-2 text-right tabular-nums text-gray-600">{r.units0} → {r.units1}</td>
@@ -105,7 +107,7 @@ export default function ProfitBridge() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>)}</Paged>
           </Card>
         </>
       )}

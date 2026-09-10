@@ -1,6 +1,9 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
+
 import RiskBreakdown, { type RiskComponents } from '@/components/RiskBreakdown';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
@@ -47,9 +50,9 @@ export default function Dashboard() {
     (async () => {
       setLoading(true);
       const [s, r, e, mt, td] = await Promise.all([
-        supabase.from('amazon_skus').select('*').eq('tenant_id', tid).neq('status', 'archived'),
-        supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,required_approval_level').eq('tenant_id', tid),
-        supabase.from('v_exception_queue').select('id,code,message,asin,resolved,overdue,hours_left,snoozed').eq('tenant_id', tid).eq('resolved', false).order('code').order('due_at'),
+        supabase.from('amazon_skus').select('*').eq('tenant_id', tid).neq('status', 'archived').limit(LIMITS.maxFetch),
+        supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,required_approval_level').eq('tenant_id', tid).in('status', ['draft', 'pending_approval', 'approved']).limit(LIMITS.maxFetch),
+        supabase.from('v_exception_queue').select('id,code,message,asin,resolved,overdue,hours_left,snoozed').eq('tenant_id', tid).eq('resolved', false).order('code').order('due_at').limit(LIMITS.maxFetch),
         supabase.rpc('sku_metrics', { t: tid }),
         supabase.rpc('tenant_daily', { t: tid, days: 90 }),
       ]);
@@ -208,6 +211,7 @@ export default function Dashboard() {
               </label>
             </div>
           } />
+<Paged items={rows} page={LIMITS.tablePage} label="ASIN">{(visible) => (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
@@ -225,7 +229,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map((s) => {
+              {visible.map((s) => {
                 const cp = Number(s.contribution_profit);
                 const margin = s.current_price ? (cp / Number(s.current_price)) * 100 : 0;
                 const risk = Number(s.risk_score ?? s.stockout_risk_score);
@@ -297,6 +301,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+)}</Paged>
         <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-500">
           LN góp phần = giá − COGS − phí FBA − phí referral. Bán/ngày 7d và Ngày hàng lấy từ dữ liệu đơn hàng theo ngày nếu có, nếu không dùng doanh số 30 ngày. ROP = điểm đặt hàng lại. Bấm tên sản phẩm để xem chi tiết.
         </div>

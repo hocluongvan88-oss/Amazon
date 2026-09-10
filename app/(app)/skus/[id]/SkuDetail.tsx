@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
 import RiskBreakdown, { type RiskComponents } from '@/components/RiskBreakdown';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -56,15 +57,17 @@ export default function SkuDetail({ id }: { id: string }) {
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const since = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
+    const { data: head } = await supabase.from('amazon_skus').select('asin').eq('id', id).eq('tenant_id', tenant.id).maybeSingle();
+    const asin = head?.asin ?? '';
     const [s, mt, d, r, e, rv, ch, rh] = await Promise.all([
       supabase.from('amazon_skus').select('*').eq('id', id).eq('tenant_id', tenant.id).maybeSingle(),
       supabase.rpc('sku_metrics', { t: tenant.id, asof: new Date().toISOString().slice(0, 10), only_sku: id }),
-      supabase.from('sku_daily_snapshots').select('date,units,revenue,price,contribution_profit,inventory_qty,reorder_point,ad_spend,ad_sales').eq('sku_id', id).gte('date', since).order('date'),
-      supabase.from('recommendations').select('id,type,title,status,risk_score,expected_impact,required_approval_level,created_at').eq('sku_id', id).order('created_at', { ascending: false }),
-      supabase.from('exceptions').select('id,code,message,resolved,created_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
-      supabase.from('raw_reviews').select('id,rating,title,body,verified_purchase,reviewed_at,created_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(50),
-      supabase.from('cogs_history').select('id,effective_from,cogs,landed_cost,source,note').eq('sku_id', id).order('effective_from', { ascending: false }),
-      supabase.from('risk_history').select('date,risk_score').eq('sku_id', id).gte('date', since).order('date'),
+      supabase.from('sku_daily_snapshots').select('date,units,revenue,price,contribution_profit,inventory_qty,reorder_point,ad_spend,ad_sales').eq('sku_id', id).gte('date', since).order('date').limit(LIMITS.chartDays),
+      supabase.from('recommendations').select('id,type,title,status,risk_score,expected_impact,required_approval_level,created_at').eq('sku_id', id).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
+      supabase.from('exceptions').select('id,code,message,resolved,created_at').eq('tenant_id', tenant.id).eq('asin', asin).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
+      supabase.from('raw_reviews').select('id,rating,title,body,verified_purchase,reviewed_at,created_at').eq('tenant_id', tenant.id).eq('asin', asin).order('created_at', { ascending: false }).limit(LIMITS.detailItems),
+      supabase.from('cogs_history').select('id,effective_from,cogs,landed_cost,source,note').eq('sku_id', id).order('effective_from', { ascending: false }).limit(LIMITS.detailItems),
+      supabase.from('risk_history').select('date,risk_score').eq('sku_id', id).gte('date', since).order('date').limit(LIMITS.chartDays),
     ]);
     if (s.error) { setError(s.error.message); setLoading(false); return; }
     if (!s.data) { setError('Không tìm thấy ASIN trong brand hiện tại.'); setLoading(false); return; }

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { fetchAll } from '@/lib/limits';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -87,8 +88,8 @@ export default function ImportWizard() {
     let ok = 0;
 
     // map asin → sku id (cho các loại update)
-    const { data: existing } = await supabase.from('amazon_skus').select('id, asin').eq('tenant_id', tenant.id);
-    const byAsin = new Map((existing ?? []).map((s) => [s.asin as string, s.id as string]));
+    const existing = await fetchAll<{ id: string; asin: string }>((from, to) => supabase.from('amazon_skus').select('id, asin').eq('tenant_id', tenant.id).order('id').range(from, to));
+    const byAsin = new Map(existing.map((s) => [s.asin as string, s.id as string]));
 
     if (schema.daily) {
       // ---- Gộp theo ngày + ASIN ----

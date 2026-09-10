@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -26,8 +28,8 @@ export default function ActionsLog() {
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const [a, r, s] = await Promise.all([
-      supabase.from('actions').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(300),
-      supabase.from('rollbacks').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
+      supabase.from('actions').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(LIMITS.maxFetch),
+      supabase.from('rollbacks').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(LIMITS.maxFetch),
       supabase.from('v_automation_stats').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     ]);
     if (a.error) setError(a.error.message); else setActions((a.data ?? []) as Action[]);
@@ -78,8 +80,8 @@ export default function ActionsLog() {
       <Card>
         <CardHeader title="Nhật ký lệnh" subtitle="Mỗi lệnh có khoá idempotency – gọi lại không tạo lệnh thứ hai" />
         {list.length === 0 ? <EmptyState title="Chưa có lệnh" description="Thực thi từ trang Gợi ý & phê duyệt (gợi ý đã duyệt → Chạy thử → Canary)." /> : (
-          <ul className="divide-y divide-gray-100">
-            {list.map((a) => { const rb = rbByAction[a.id]; return (
+          <Paged items={list} page={LIMITS.feed} label="lệnh">{(visible) => (<ul className="divide-y divide-gray-100">
+            {visible.map((a) => { const rb = rbByAction[a.id]; return (
               <li key={a.id} className="px-5 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className={MODE_CLS[a.mode]}>{MODE_LABEL[a.mode]}</Badge>
@@ -100,7 +102,7 @@ export default function ActionsLog() {
                 {open === a.id && <pre className="mt-2 overflow-x-auto rounded bg-gray-50 border border-gray-200 p-2 text-[11px] text-gray-700">{JSON.stringify({ idempotency_key: a.idempotency_key, payload: a.payload, response: a.response, baseline_units_per_day: a.baseline_units_per_day }, null, 2)}</pre>}
               </li>
             ); })}
-          </ul>
+          </ul>)}</Paged>
         )}
       </Card>
     </>

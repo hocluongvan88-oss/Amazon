@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -44,11 +46,11 @@ export default function ReviewsVoc() {
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const [r, t, s, k, d, p, m, po] = await Promise.all([
-      supabase.from('v_review_triage').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
+      supabase.from('v_review_triage').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(LIMITS.maxFetch),
       supabase.from('review_topics').select('code,label,type').eq('tenant_id', tenant.id).eq('active', true),
       supabase.from('v_review_topic_summary').select('*').eq('tenant_id', tenant.id),
-      supabase.from('voc_tickets').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
-      supabase.from('response_drafts').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
+      supabase.from('voc_tickets').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(LIMITS.maxFetch),
+      supabase.from('response_drafts').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(LIMITS.maxFetch),
       supabase.from('v_classification_precision').select('*').eq('tenant_id', tenant.id),
       supabase.from('tenant_members').select('user_id, role').eq('tenant_id', tenant.id),
       supabase.from('policy_register').select('review_triage_max_rating').eq('tenant_id', tenant.id).maybeSingle(),
@@ -107,8 +109,8 @@ export default function ReviewsVoc() {
         <div className={`grid gap-4 ${sel ? 'xl:grid-cols-3' : ''}`}>
           <Card className={sel ? 'xl:col-span-2' : ''}>
             {low.length === 0 ? <EmptyState title="Không có đánh giá tiêu cực (1–3★)" description="Nhập đánh giá từ Brand Registry → Customer Reviews qua trang Nhập dữ liệu." /> : (
-              <ul className="divide-y divide-gray-100">
-                {[...low].sort((a, b) => Number(a.has_ticket || !!a.draft_status) - Number(b.has_ticket || !!b.draft_status) || (b.severity ?? 0) - (a.severity ?? 0) || a.rating - b.rating).map((r) => (
+              <Paged items={[...low].sort((a, b) => Number(a.has_ticket || !!a.draft_status) - Number(b.has_ticket || !!b.draft_status) || (b.severity ?? 0) - (a.severity ?? 0) || a.rating - b.rating)} page={LIMITS.listPage} label="đánh giá">{(visible) => (<ul className="divide-y divide-gray-100">
+                {visible.map((r) => (
                   <li key={r.id} className={`px-5 py-3 cursor-pointer hover:bg-gray-50 ${sel?.id === r.id ? 'bg-indigo-50/50' : ''}`} onClick={() => setSel(r)}>
                     <div className="flex flex-wrap items-center gap-2">
                       <Stars n={r.rating} />
@@ -123,7 +125,7 @@ export default function ReviewsVoc() {
                     <p className="text-xs text-gray-500 mt-0.5"><span className="font-mono">{r.asin}</span> · {r.sku_title ?? '—'} · {new Date(r.reviewed_at ?? r.created_at).toLocaleDateString('vi-VN')}</p>
                   </li>
                 ))}
-              </ul>
+              </ul>)}</Paged>
             )}
           </Card>
           {sel && <ReviewPanel review={sel} topics={topics} members={members} canWrite={canWrite} userId={user?.id ?? null} tenantId={tenant!.id} onClose={() => setSel(null)} onChanged={load} />}
@@ -318,8 +320,8 @@ function TicketsTab({ tickets, members, canWrite, userId, onChanged }: { tickets
       <CardHeader title="Ticket VOC" subtitle="Chất lượng → QC/nhà cung cấp · Nội dung → tối ưu listing (bullet, ảnh, A+) · Fulfillment → đóng gói/FBA prep · Dịch vụ → CS" action={<label className="text-sm flex items-center gap-2"><input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="rounded" />Hiện đã đóng</label>} />
       {err && <div className="p-4"><ErrorBox message={err} /></div>}
       {list.length === 0 ? <EmptyState title="Không có ticket" description="Mở ticket từ tab Đánh giá tiêu cực." /> : (
-        <ul className="divide-y divide-gray-100">
-          {list.map((t) => (
+        <Paged items={list} page={LIMITS.listPage} label="ticket">{(visible) => (<ul className="divide-y divide-gray-100">
+          {visible.map((t) => (
             <li key={t.id} className="px-5 py-3 flex flex-wrap gap-3 items-start">
               <Badge className={t.priority === 'P0' || t.priority === 'P1' ? 'bg-red-50 text-red-700 ring-red-600/20' : 'bg-gray-100 text-gray-700 ring-gray-500/20'}>{t.priority}</Badge>
               <div className="flex-1 min-w-0">
@@ -336,7 +338,7 @@ function TicketsTab({ tickets, members, canWrite, userId, onChanged }: { tickets
               )}
             </li>
           ))}
-        </ul>
+        </ul>)}</Paged>
       )}
     </Card>
   );
@@ -352,8 +354,8 @@ function DraftsTab({ drafts, reviews, canWrite, userId, membersCount, onChanged 
       <CardHeader title="Liên hệ khách hàng" subtitle="Amazon chỉ cho liên hệ người đánh giá 1–3★ qua Brand Registry (mẫu Customer support / Courtesy refund). Mọi tin đều qua kiểm tra chính sách và người duyệt khác người soạn; gửi trong Seller Central rồi đánh dấu Đã gửi." />
       {err && <div className="p-4"><ErrorBox message={err} /></div>}
       {drafts.length === 0 ? <EmptyState title="Chưa có tin liên hệ" description="Soạn từ tab Đánh giá tiêu cực." /> : (
-        <ul className="divide-y divide-gray-100">
-          {drafts.map((d) => { const r = rmap[d.review_id]; const own = d.created_by === userId; const pc = d.policy_check; return (
+        <Paged items={drafts} page={LIMITS.listPage} label="tin">{(visible) => (<ul className="divide-y divide-gray-100">
+          {visible.map((d) => { const r = rmap[d.review_id]; const own = d.created_by === userId; const pc = d.policy_check; return (
             <li key={d.id} className="px-5 py-4">
               <div className="flex flex-wrap items-center gap-2"><Badge className={DSTATUS[d.status].cls}>{DSTATUS[d.status].label}</Badge>{r && <><Stars n={r.rating} /><span className="font-mono text-xs text-gray-500">{r.asin}</span></>}{pc && <span className={`text-xs ${pc.ok ? 'text-emerald-700' : 'text-red-600'}`}>{pc.ok ? '✓ chính sách' : `✗ ${pc.violations.join(', ')}`}</span>}<span className="text-xs text-gray-400">{new Date(d.created_at).toLocaleString('vi-VN')}{own && ' · tôi soạn'}</span></div>
               {r && <p className="text-xs text-gray-500 mt-1 line-clamp-1">Review: {r.title ?? r.body}</p>}
@@ -370,7 +372,7 @@ function DraftsTab({ drafts, reviews, canWrite, userId, membersCount, onChanged 
               )}
             </li>
           ); })}
-        </ul>
+        </ul>)}</Paged>
       )}
     </Card>
   );

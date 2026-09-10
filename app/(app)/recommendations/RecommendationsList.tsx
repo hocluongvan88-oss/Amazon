@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import ExecutePanel, { type AutomationPolicy } from '@/components/ExecutePanel';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
@@ -108,8 +110,9 @@ export default function RecommendationsList() {
       {list.length === 0 ? (
         <Card><EmptyState title="Không có gợi ý phù hợp" description="Thử đổi bộ lọc hoặc chờ pipeline sinh gợi ý mới." /></Card>
       ) : (
+<Paged items={list} page={LIMITS.listPage} label="gợi ý">{(visible) => (
         <div className="space-y-3">
-          {list.map((r) => {
+          {visible.map((r) => {
             const st = REC_STATUS[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-700' };
             const risk = Number(r.risk_score);
             const isBusy = busy === r.id;
@@ -166,6 +169,7 @@ export default function RecommendationsList() {
             );
           })}
         </div>
+      )}</Paged>
       )}
 
       {reasonFor && (

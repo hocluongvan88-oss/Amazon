@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -148,7 +150,7 @@ export default function InventoryPlanner() {
       <div className={`grid gap-4 ${selPlan ? 'xl:grid-cols-3' : ''}`}>
         <Card className={selPlan ? 'xl:col-span-2' : ''}>
           {list.length === 0 ? <EmptyState title="Không có ASIN" /> : (
-            <div className="overflow-x-auto">
+            <Paged items={list} page={LIMITS.tablePage} label="ASIN">{(visible) => (<div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-gray-500 bg-gray-50">
                   <tr>
@@ -157,7 +159,7 @@ export default function InventoryPlanner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {list.map((p) => {
+                  {visible.map((p) => {
                     const st = STATUS[p.status] ?? STATUS.ok; const b = base.find((x) => x.sku_id === p.sku_id);
                     const late = p.order_by_date && p.order_by_date < new Date().toISOString().slice(0, 10);
                     return (
@@ -178,7 +180,7 @@ export default function InventoryPlanner() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </div>)}</Paged>
           )}
         </Card>
 
@@ -209,7 +211,7 @@ function SkuForecastPanel({ plan, onClose }: { plan: Plan; onClose: () => void }
     (async () => {
       const since = new Date(Date.now() - 56 * 86400000).toISOString().slice(0, 10);
       const [h, f] = await Promise.all([
-        supabase.from('sku_daily_snapshots').select('date,units').eq('sku_id', plan.sku_id).gte('date', since).order('date'),
+        supabase.from('sku_daily_snapshots').select('date,units').eq('sku_id', plan.sku_id).gte('date', since).order('date').limit(LIMITS.chartDays),
         plan.made_on ? supabase.from('forecasts').select('date,p50,p90').eq('sku_id', plan.sku_id).eq('made_on', plan.made_on).order('date') : Promise.resolve({ data: [] }),
       ]);
       const map = new Map<string, ForecastPoint>();

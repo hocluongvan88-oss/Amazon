@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { LIMITS } from '@/lib/limits';
+import { Paged } from '@/components/ShowMore';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
@@ -42,7 +44,7 @@ export default function ExceptionsList() {
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const [q, m, p, r] = await Promise.all([
-      supabase.from('v_exception_queue').select('*').eq('tenant_id', tenant.id).order('resolved').order('code').order('due_at'),
+      supabase.from('v_exception_queue').select('*').eq('tenant_id', tenant.id).order('resolved').order('code').order('due_at').limit(LIMITS.maxFetch),
       supabase.from('tenant_members').select('user_id, role').eq('tenant_id', tenant.id),
       supabase.from('v_rule_precision').select('*').eq('tenant_id', tenant.id),
       supabase.from('rule_runs').select('*').eq('tenant_id', tenant.id).order('started_at', { ascending: false }).limit(1).maybeSingle(),
@@ -107,8 +109,8 @@ export default function ExceptionsList() {
       <div className="grid lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           {list.length === 0 ? <EmptyState title="Không có ngoại lệ nào" description="Mọi thứ đang trong ngưỡng chính sách." /> : (
-            <ul className="divide-y divide-gray-100">
-              {list.map((e) => (
+            <Paged items={list} page={LIMITS.listPage} label="ngoại lệ">{(visible) => (<ul className="divide-y divide-gray-100">
+              {visible.map((e) => (
                 <li key={e.id} className={`px-5 py-4 ${e.resolved ? 'opacity-60' : ''} ${e.overdue ? 'bg-red-50/40' : ''}`}>
                   <div className="flex flex-wrap items-start gap-3">
                     <Badge className={CODE_CLS[e.code] ?? CODE_CLS.P3}>{e.code}</Badge>
@@ -145,7 +147,7 @@ export default function ExceptionsList() {
                   </div>
                 </li>
               ))}
-            </ul>
+            </ul>)}</Paged>
           )}
         </Card>
 
