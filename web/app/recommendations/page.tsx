@@ -1,24 +1,21 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import RecommendationsList from './RecommendationsList';
+import PageHeader from '@/components/PageHeader';
+import { Spinner } from '@/components/ui';
 
-export const metadata: Metadata = {
-  title: 'Vexim – Gợi ý',
-  description: 'Danh sách gợi ý đã tạo cho các ASIN',
-};
+export const metadata: Metadata = { title: 'Gợi ý & phê duyệt' };
 
 export default function RecommendationsPage() {
   return (
-    <section className="py-8 bg-gray-50 flex-1">
-      <div className="max-w-7xl mx-auto px-4">
-        <header className="mb-6 flex items-center justify-between flex-col sm:flex-row gap-4">
-          <h1 className="text-3xl font-bold text-gray-900">Danh sách gợi ý</h1>
-          <Link href="/" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition">
-            Quay về bảng điều khiển
-          </Link>
-        </header>
+    <>
+      <PageHeader
+        title="Gợi ý & phê duyệt"
+        description="Các đề xuất do hệ thống sinh ra về giá, nhập hàng, chuyển kho và phản hồi review. Duyệt theo cấp: L0 tự động · L1 operator · L2 admin."
+      />
+      <Suspense fallback={<Spinner />}>
         <RecommendationsList />
-      </div>
-    </section>
+      </Suspense>
+    </>
   );
 }

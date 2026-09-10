@@ -1,188 +1,160 @@
 'use client';
 
 import React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import { usd, REC_TYPE_LABEL, REC_STATUS } from '@/lib/format';
+import { Card, Badge, EmptyState, Spinner, ErrorBox, btn, input } from '@/components/ui';
 
 type Rec = {
-  id: string;
-  asin: string;
-  type: string;
-  title: string | null;
-  rationale: string | null;
-  current_value: number | null;
-  proposed_value: number | null;
-  expected_impact: number | null;
-  risk_score: number;
-  required_approval_level: string;
-  status: string;
-  created_at: string;
+  id: string; asin: string; type: string; title: string | null; rationale: string | null;
+  current_value: number | null; proposed_value: number | null; expected_impact: number | null;
+  risk_score: number; required_approval_level: string; status: string; created_at: string;
   amazon_skus: { title: string } | null;
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  price_adjust: 'Điều chỉnh giá',
-  replenish: 'Nhập hàng',
-  review_response: 'Phản hồi review',
-  inventory_transfer: 'Chuyển kho',
-};
-
-const STATUS: Record<string, { label: string; cls: string }> = {
-  draft: { label: 'Nháp', cls: 'bg-gray-100 text-gray-700' },
-  pending_approval: { label: 'Chờ duyệt', cls: 'bg-yellow-100 text-yellow-800' },
-  approved: { label: 'Đã duyệt', cls: 'bg-blue-100 text-blue-800' },
-  rejected: { label: 'Từ chối', cls: 'bg-red-100 text-red-800' },
-  executed: { label: 'Đã thực thi', cls: 'bg-green-100 text-green-800' },
-  rolled_back: { label: 'Đã hoàn tác', cls: 'bg-orange-100 text-orange-800' },
-};
+const STATUS_ORDER = ['pending_approval', 'draft', 'approved', 'executed', 'rejected', 'rolled_back'];
 
 export default function RecommendationsList() {
+  const params = useSearchParams();
   const [recs, setRecs] = React.useState<Rec[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string>('all');
+  const [type, setType] = React.useState<string>('all');
+  const [asin, setAsin] = React.useState(params.get('asin') ?? '');
 
   const load = React.useCallback(async () => {
-    const { data, error: fetchError } = await supabase
+    const { data, error: e } = await supabase
       .from('recommendations')
       .select('*, amazon_skus(title)')
       .order('created_at', { ascending: false });
-    if (fetchError) setError(fetchError.message);
+    if (e) setError(e.message);
     else setRecs((data ?? []) as Rec[]);
     setLoading(false);
   }, []);
 
   React.useEffect(() => {
-    load();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on mount
+    void load();
   }, [load]);
 
-  async function setStatus(id: string, status: string) {
+  async function transition(id: string, next: string) {
     setBusy(id);
-    const patch: Record<string, unknown> = { status };
-    if (status === 'approved') patch.approved_at = new Date().toISOString();
-    if (status === 'executed') patch.executed_at = new Date().toISOString();
-    const { error: updError } = await supabase.from('recommendations').update(patch).eq('id', id);
+    const patch: Record<string, unknown> = { status: next };
+    if (next === 'approved') patch.approved_at = new Date().toISOString();
+    if (next === 'executed') patch.executed_at = new Date().toISOString();
+    const { error: e } = await supabase.from('recommendations').update(patch).eq('id', id);
     setBusy(null);
-    if (updError) setError(updError.message);
-    else load();
+    if (e) setError(e.message); else load();
   }
 
-  if (loading) return <p>Đang tải dữ liệu…</p>;
-  if (error) return <p className="text-red-600">Lỗi: {error}</p>;
-  if (recs.length === 0)
-    return (
-      <p className="text-gray-600">
-        Chưa có gợi ý nào. Sau khi chạy pipeline sẽ hiển thị các gợi ý về giá, tồn kho và review.
-      </p>
-    );
+  const counts = recs.reduce<Record<string, number>>((m, r) => ((m[r.status] = (m[r.status] ?? 0) + 1), m), {});
+
+  const list = recs
+    .filter((r) => status === 'all' || r.status === status)
+    .filter((r) => type === 'all' || r.type === type)
+    .filter((r) => !asin || r.asin.toLowerCase().includes(asin.toLowerCase()))
+    .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)
+      || Number(b.expected_impact ?? 0) - Number(a.expected_impact ?? 0));
+
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBox message={error} />;
 
   return (
-    <div className="space-y-4">
-      {recs.map((r) => {
-        const st = STATUS[r.status] ?? { label: r.status, cls: 'bg-gray-100' };
-        return (
-          <article key={r.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                    {TYPE_LABEL[r.type] ?? r.type}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                    Duyệt: {r.required_approval_level}
-                  </span>
+    <>
+      {/* status tabs */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Tab active={status === 'all'} onClick={() => setStatus('all')}>Tất cả <Count n={recs.length} /></Tab>
+        {STATUS_ORDER.map((s) => (
+          <Tab key={s} active={status === s} onClick={() => setStatus(s)}>
+            {REC_STATUS[s].label} <Count n={counts[s] ?? 0} />
+          </Tab>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={type} onChange={(e) => setType(e.target.value)} className={`${input} w-48`}>
+          <option value="all">Mọi loại gợi ý</option>
+          {Object.entries(REC_TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <input value={asin} onChange={(e) => setAsin(e.target.value)} placeholder="Lọc theo ASIN" className={`${input} w-44 font-mono`} />
+        {(asin || type !== 'all' || status !== 'all') && (
+          <button className={btn.secondary} onClick={() => { setAsin(''); setType('all'); setStatus('all'); }}>Xóa bộ lọc</button>
+        )}
+      </div>
+
+      {list.length === 0 ? (
+        <Card><EmptyState title="Không có gợi ý phù hợp" description="Thử đổi bộ lọc hoặc chờ pipeline sinh gợi ý mới." /></Card>
+      ) : (
+        <div className="space-y-3">
+          {list.map((r) => {
+            const st = REC_STATUS[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-700' };
+            const risk = Number(r.risk_score);
+            const isBusy = busy === r.id;
+            return (
+              <Card key={r.id} className="p-5">
+                <div className="flex flex-col md:flex-row md:items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <Badge className="bg-indigo-50 text-indigo-700 ring-indigo-600/20">{REC_TYPE_LABEL[r.type] ?? r.type}</Badge>
+                      <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${st.cls}`}>{st.label}</span>
+                      <Badge className="bg-gray-50 text-gray-600 ring-gray-500/20">Cấp duyệt {r.required_approval_level}</Badge>
+                      <span className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('vi-VN')}</span>
+                    </div>
+                    <h3 className="text-base font-semibold text-gray-900">{r.title ?? '(không có tiêu đề)'}</h3>
+                    <p className="text-sm text-gray-500 font-mono">{r.asin}<span className="font-sans">{r.amazon_skus?.title ? ` · ${r.amazon_skus.title}` : ''}</span></p>
+                    {r.rationale && <p className="mt-2 text-sm text-gray-700 leading-relaxed">{r.rationale}</p>}
+                  </div>
+
+                  <dl className="grid grid-cols-4 md:grid-cols-1 gap-3 md:w-40 text-sm md:text-right shrink-0">
+                    <Metric label="Hiện tại" value={r.current_value != null ? fmtVal(r.type, r.current_value) : '—'} />
+                    <Metric label="Đề xuất" value={r.proposed_value != null ? fmtVal(r.type, r.proposed_value) : '—'} strong />
+                    <Metric label="Tác động / tháng" value={r.expected_impact != null ? `+${usd(r.expected_impact, 0)}` : '—'} cls="text-emerald-700" />
+                    <Metric label="Rủi ro" value={risk.toFixed(0)} cls={risk >= 50 ? 'text-orange-600' : 'text-emerald-600'} />
+                  </dl>
                 </div>
-                <h2 className="text-lg font-semibold text-gray-900">{r.title ?? '(không có tiêu đề)'}</h2>
-                <p className="text-sm text-gray-500">
-                  {r.asin}
-                  {r.amazon_skus?.title ? ` · ${r.amazon_skus.title}` : ''}
-                </p>
-              </div>
-              <div className="text-right text-sm">
-                <p className="text-gray-500">Rủi ro</p>
-                <p className={`text-2xl font-bold ${r.risk_score >= 50 ? 'text-orange-600' : 'text-green-600'}`}>
-                  {Number(r.risk_score).toFixed(0)}
-                </p>
-              </div>
-            </div>
 
-            {r.rationale && <p className="mt-3 text-sm text-gray-700">{r.rationale}</p>}
-
-            <dl className="mt-3 grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <dt className="text-gray-500">Hiện tại</dt>
-                <dd className="font-medium">{r.current_value ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Đề xuất</dt>
-                <dd className="font-medium">{r.proposed_value ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Tác động ước tính</dt>
-                <dd className="font-medium text-green-700">
-                  {r.expected_impact != null ? `$${Number(r.expected_impact).toFixed(0)}/tháng` : '—'}
-                </dd>
-              </div>
-            </dl>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {r.status === 'draft' && (
-                <Btn onClick={() => setStatus(r.id, 'pending_approval')} disabled={busy === r.id}>
-                  Gửi duyệt
-                </Btn>
-              )}
-              {r.status === 'pending_approval' && (
-                <>
-                  <Btn onClick={() => setStatus(r.id, 'approved')} disabled={busy === r.id} color="green">
-                    Phê duyệt
-                  </Btn>
-                  <Btn onClick={() => setStatus(r.id, 'rejected')} disabled={busy === r.id} color="red">
-                    Từ chối
-                  </Btn>
-                </>
-              )}
-              {r.status === 'approved' && (
-                <Btn onClick={() => setStatus(r.id, 'executed')} disabled={busy === r.id} color="green">
-                  Đánh dấu đã thực thi
-                </Btn>
-              )}
-              {r.status === 'executed' && (
-                <Btn onClick={() => setStatus(r.id, 'rolled_back')} disabled={busy === r.id} color="red">
-                  Hoàn tác
-                </Btn>
-              )}
-            </div>
-          </article>
-        );
-      })}
-    </div>
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
+                  {r.status === 'draft' && <button className={btn.primary} disabled={isBusy} onClick={() => transition(r.id, 'pending_approval')}>Gửi duyệt</button>}
+                  {r.status === 'pending_approval' && (<>
+                    <button className={btn.success} disabled={isBusy} onClick={() => transition(r.id, 'approved')}>✓ Phê duyệt</button>
+                    <button className={btn.danger} disabled={isBusy} onClick={() => transition(r.id, 'rejected')}>Từ chối</button>
+                  </>)}
+                  {r.status === 'approved' && <button className={btn.success} disabled={isBusy} onClick={() => transition(r.id, 'executed')}>Đánh dấu đã thực thi</button>}
+                  {r.status === 'executed' && <button className={btn.secondary} disabled={isBusy} onClick={() => transition(r.id, 'rolled_back')}>Hoàn tác</button>}
+                  {(r.status === 'rejected' || r.status === 'rolled_back') && <button className={btn.secondary} disabled={isBusy} onClick={() => transition(r.id, 'draft')}>Mở lại</button>}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 
-function Btn({
-  children,
-  onClick,
-  disabled,
-  color = 'indigo',
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  color?: 'indigo' | 'green' | 'red';
-}) {
-  const cls = {
-    indigo: 'bg-indigo-600 hover:bg-indigo-700',
-    green: 'bg-green-600 hover:bg-green-700',
-    red: 'bg-red-600 hover:bg-red-700',
-  }[color];
+function fmtVal(type: string, v: number) {
+  return type === 'price_adjust' ? usd(v) : `${Number(v).toLocaleString('vi-VN')} đv`;
+}
+function Metric({ label, value, strong, cls = '' }: { label: string; value: string; strong?: boolean; cls?: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`px-3 py-1.5 text-sm font-medium text-white rounded-md transition disabled:opacity-60 ${cls}`}
-    >
+    <div>
+      <dt className="text-xs text-gray-500">{label}</dt>
+      <dd className={`tabular-nums ${strong ? 'font-semibold text-gray-900' : 'text-gray-800'} ${cls}`}>{value}</dd>
+    </div>
+  );
+}
+function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${
+        active ? 'bg-slate-900 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}>
       {children}
     </button>
   );
+}
+function Count({ n }: { n: number }) {
+  return <span className="text-xs opacity-70">{n}</span>;
 }
