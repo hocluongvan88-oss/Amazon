@@ -302,3 +302,11 @@ CREATE TRIGGER trg_measurements_audit AFTER INSERT OR UPDATE OR DELETE ON public
 
 -- Kiểm tra nhanh:
 -- SELECT public.measure_all('<tenant>', 14); SELECT subject_type, asin, confidence, incremental_cp_total, concurrent_changes FROM public.measurements;
+
+-- Xác nhận đã nạp đúng bản (in ra trong tab Messages/Results)
+DO $$ BEGIN
+  IF position('v_sku' in (SELECT prosrc FROM pg_proc WHERE proname = 'measure_subject' LIMIT 1)) = 0 THEN
+    RAISE EXCEPTION '016: measure_subject vẫn là bản cũ — kiểm tra lại file';
+  END IF;
+  RAISE NOTICE '016_measurement_kpi.sql v2 (v_sku) đã nạp thành công';
+END $$;
