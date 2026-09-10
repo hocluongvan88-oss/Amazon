@@ -39,8 +39,9 @@ export default function ControlRoom({ skuId, asin, canWrite }: { skuId: string; 
   const [loading, setLoading] = React.useState(true);
 
   const load = React.useCallback(async () => {
-    const [r, t] = await Promise.all([
-      supabase.rpc('asin_control_room', { p_sku: skuId }),
+    let r = await supabase.rpc('asin_control_room_v2', { p_sku: skuId });
+    if (r.error && r.error.message.includes('asin_control_room_v2')) r = await supabase.rpc('asin_control_room', { p_sku: skuId }); // chưa chạy 015
+    const [t] = await Promise.all([
       supabase.from('tasks').select('*').eq('sku_id', skuId).order('status').order('priority').limit(50),
     ]);
     if (r.error) setErr(r.error.message); else setRoom(r.data as Room);

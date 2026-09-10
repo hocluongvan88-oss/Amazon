@@ -20,6 +20,7 @@ const NAV: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: '/actions', label: 'Lệnh thực thi', icon: '⚡' },
   { href: '/measurement', label: 'Đo lường', icon: '◎' },
   { href: '/audit', label: 'Nhật ký', icon: '≡' },
+  { href: '/settings/data-sources', label: 'Nguồn dữ liệu', icon: '⛁' },
   { href: '/settings/policy', label: 'Chính sách', icon: '§' },
   { href: '/settings/members', label: 'Thành viên', icon: '⚙', perm: 'member.manage' },
 ];

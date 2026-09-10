@@ -12,6 +12,7 @@ import { Card, CardHeader, Badge, StatCard, EmptyState, Spinner, ErrorBox, btn, 
 import PageHeader from '@/components/PageHeader';
 import DataReadiness from '@/components/DataReadiness';
 import DataConnections from '@/components/DataConnections';
+import FreshnessBanner from '@/components/FreshnessBanner';
 import { RevenueProfitChart, fillDays, type DailyPoint } from '@/components/charts';
 import { useTenant } from '@/lib/tenant';
 
@@ -116,6 +117,8 @@ export default function Dashboard() {
           </>
         }
       />
+
+      <FreshnessBanner tenantId={tenant?.id} />
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

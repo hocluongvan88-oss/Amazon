@@ -91,7 +91,7 @@ baseline_snapshot · change (before/after) · approver · evidence · expected_k
 ### P0 (trước khi mở rộng pilot)
 1. ✅ Permission theo hành động (`012_permissions.sql`: 7 role, `has_permission`, delegation có thời hạn, SoD nghiêm) — thay thế so sánh role cứng.
 2. ✅ `required_approval_level` → `approval_tier`; `actions.automation_level` + `policy_register.max_automation_level` (L3 mặc định, L4 phải bật).
-3. Data connector abstraction: `data_sources`, `ingestion_runs`, freshness monitor; CSV là 1 connector.
+3. ✅ Data connector abstraction (`015_connectors_freshness.sql`): `data_feeds` catalog (SLA, settlement lag, Amazon report type), `data_sources`, `ingestion_runs`, `v_data_freshness`, `feed_is_fresh`, `freshness_summary`; CSV `import_jobs` tự sinh run; cảnh báo stale trên Tổng quan & Control Room. Hợp đồng: `docs/CONNECTOR_CONTRACT_v0.1.md`. Connector SP‑API/Ads API thực thi ở P2.
 4. ✅ Product Fact Sheet + evidence (`013_content_studio.sql`).
 5. ✅ Listing draft & A+ draft (content_versions) + Compliance Gate + content approval flow + version diff + rollback + `content_impact`.
 6. ✅ VoC ticket → task (5 loại + content_opportunity) và ASIN Control Room (`014_tasks_control_room.sql`).

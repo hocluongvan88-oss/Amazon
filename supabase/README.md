@@ -20,8 +20,13 @@ Vào **Supabase Dashboard → SQL Editor → New query**, dán từng file và b
 
 Tất cả các file đều idempotent (chạy lại không lỗi). `003_lock_down.sql` đã được gộp vào `004`.
 
+| 14 | `015_connectors_freshness.sql` | **P0‑5**: `data_feeds` (catalog 9 feed: SLA, settlement lag, Amazon report type), `data_sources` (csv_manual / sp_api / ads_api; chỉ `credential_ref`, không secret), `ingestion_runs` (mọi lần lấy dữ liệu; CSV `import_jobs` tự sinh run + backfill), `v_data_freshness` / `feed_is_fresh` / `freshness_summary`, `asin_control_room_v2` (thêm freshness + signal), `upsert_data_source` (cần `policy.edit`) | Bắt buộc |
+
 ## Sau khi chạy 014
 Chạy `supabase/tests/014_tasks_control_room_test.sql` → FAIL = 0. UI: menu **Hàng đợi task**; trang SKU có **ASIN Control Room**; tab Ticket VOC có nút **Tạo task →**.
+
+## Sau khi chạy 015
+Chạy `supabase/tests/015_connectors_freshness_test.sql` → FAIL = 0. UI: menu **Nguồn dữ liệu** (độ tươi theo feed, đăng ký nguồn API, sổ ingestion_runs); banner ⚠ dữ liệu chưa tươi trên **Tổng quan**; Control Room có tín hiệu "Dữ liệu bắt buộc chưa tươi". Thiết kế: `docs/CONNECTOR_CONTRACT_v0.1.md`.
 
 ## Sau khi chạy 013
 Chạy `supabase/tests/013_content_studio_test.sql` → toàn bộ `PASS`. UI: menu **Content Studio**.
