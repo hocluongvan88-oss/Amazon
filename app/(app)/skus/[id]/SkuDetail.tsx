@@ -1,19 +1,20 @@
 'use client';
 
 import React from 'react';
+import RiskBreakdown, { type RiskComponents } from '@/components/RiskBreakdown';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { usd, num, pct, riskLevel, RISK_META, REC_TYPE_LABEL, REC_STATUS } from '@/lib/format';
 import { Card, CardHeader, Badge, Spinner, ErrorBox, EmptyState, btn, input } from '@/components/ui';
-import { UnitsChart, PriceProfitChart, InventoryChart, AdsChart, enrich, fillDays, type DailyPoint } from '@/components/charts';
+import { RiskHistoryChart, UnitsChart, PriceProfitChart, InventoryChart, AdsChart, enrich, fillDays, type DailyPoint } from '@/components/charts';
 
 type Sku = {
   id: string; asin: string; sku: string | null; title: string; status: string; marketplace: string; supplier: string | null; lead_time_days: number | null;
   current_price: number; list_price: number | null; cogs: number; fee_per_unit: number; referral_fee_pct: number; contribution_profit: number;
   sales_last_30d: number; revenue_last_30d: number | null; sessions_last_30d: number | null; inventory_qty: number; reorder_point: number;
-  stockout_risk_score: number; cogs_source: string | null; fee_source: string | null; cogs_updated_at: string | null; fee_updated_at: string | null; last_ingested_at: string | null;
+  stockout_risk_score: number; risk_score: number | null; risk_components: RiskComponents; risk_computed_at: string | null; cogs_source: string | null; fee_source: string | null; cogs_updated_at: string | null; fee_updated_at: string | null; last_ingested_at: string | null;
 };
 type Metrics = {
   velocity_7d: number | null; velocity_30d: number | null; velocity_change_pct: number | null; coverage_days_30: number;
@@ -45,6 +46,7 @@ export default function SkuDetail({ id }: { id: string }) {
   const [excs, setExcs] = React.useState<Exc[]>([]);
   const [reviews, setReviews] = React.useState<Review[]>([]);
   const [cogs, setCogs] = React.useState<Cogs[]>([]);
+  const [riskHist, setRiskHist] = React.useState<{ date: string; risk_score: number }[]>([]);
   const [range, setRange] = React.useState<30 | 90>(30);
   const [tab, setTab] = React.useState<'recs' | 'excs' | 'reviews' | 'cogs' | 'snaps'>('recs');
   const [loading, setLoading] = React.useState(true);
@@ -54,7 +56,7 @@ export default function SkuDetail({ id }: { id: string }) {
   const load = React.useCallback(async () => {
     if (!tenant) return;
     const since = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
-    const [s, mt, d, r, e, rv, ch] = await Promise.all([
+    const [s, mt, d, r, e, rv, ch, rh] = await Promise.all([
       supabase.from('amazon_skus').select('*').eq('id', id).eq('tenant_id', tenant.id).maybeSingle(),
       supabase.rpc('sku_metrics', { t: tenant.id, asof: new Date().toISOString().slice(0, 10), only_sku: id }),
       supabase.from('sku_daily_snapshots').select('date,units,revenue,price,contribution_profit,inventory_qty,reorder_point,ad_spend,ad_sales').eq('sku_id', id).gte('date', since).order('date'),
@@ -62,6 +64,7 @@ export default function SkuDetail({ id }: { id: string }) {
       supabase.from('exceptions').select('id,code,message,resolved,created_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
       supabase.from('raw_reviews').select('id,rating,title,body,verified_purchase,reviewed_at,created_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('cogs_history').select('id,effective_from,cogs,landed_cost,source,note').eq('sku_id', id).order('effective_from', { ascending: false }),
+      supabase.from('risk_history').select('date,risk_score').eq('sku_id', id).gte('date', since).order('date'),
     ]);
     if (s.error) { setError(s.error.message); setLoading(false); return; }
     if (!s.data) { setError('Không tìm thấy ASIN trong brand hiện tại.'); setLoading(false); return; }
@@ -73,6 +76,7 @@ export default function SkuDetail({ id }: { id: string }) {
     setExcs(((e.data ?? []) as (Exc & { asin?: string })[]).filter((x) => !('asin' in x) || x.asin === k.asin));
     setReviews(((rv.data ?? []) as (Review & { asin?: string })[]).filter((x) => !('asin' in x) || x.asin === k.asin));
     setCogs((ch.data ?? []) as Cogs[]);
+    setRiskHist(((rh.data ?? []) as { date: string; risk_score: number }[]).map((x) => ({ ...x, risk_score: Number(x.risk_score) })));
     setLoading(false);
   }, [tenant, id]);
 
@@ -89,7 +93,7 @@ export default function SkuDetail({ id }: { id: string }) {
   const hasAds = daily.some((d) => d.ad_spend != null);
   const hasState = daily.some((d) => d.price != null);
   const margin = sku.current_price ? (Number(sku.contribution_profit) / Number(sku.current_price)) * 100 : 0;
-  const risk = Number(sku.stockout_risk_score);
+  const risk = Number(sku.risk_score ?? sku.stockout_risk_score);
   const lvl = riskLevel(risk);
   const health = HEALTH[m?.inventory_health ?? 'unknown'];
   const thin = (m?.coverage_days_30 ?? 0) < 20;
@@ -133,6 +137,19 @@ export default function SkuDetail({ id }: { id: string }) {
         <Tile label="TACoS · CVR (30d)" value={m?.tacos_30 != null || m?.cvr_30 != null ? `${m?.tacos_30 != null ? pct(m.tacos_30) : '—'} · ${m?.cvr_30 != null ? pct(m.cvr_30) : '—'}` : '—'}
           hint={m?.ad_spend_30 != null ? `QC ${usd(m.ad_spend_30, 0)} · ACoS ${m.acos_30 != null ? pct(m.acos_30) : '—'}` : 'Chưa có dữ liệu quảng cáo / sessions'} />
       </div>
+
+      {/* Risk breakdown */}
+      <Card className="mb-5">
+        <CardHeader title="Vì sao rủi ro" subtitle={`Điểm tổng hợp ${risk.toFixed(0)}/100 · ${RISK_META[lvl].label}${sku.risk_computed_at ? ` · tính lúc ${new Date(sku.risk_computed_at).toLocaleString('vi-VN')}` : ''}`}
+          action={<Badge className={RISK_META[lvl].cls}>{risk.toFixed(0)}</Badge>} />
+        <div className="p-5 grid lg:grid-cols-2 gap-6">
+          <RiskBreakdown c={sku.risk_components} total={risk} />
+          <div>
+            <p className="text-xs font-medium text-gray-700 mb-1">Diễn biến 90 ngày</p>
+            {riskHist.length < 2 ? <p className="text-xs text-gray-500">Chưa đủ lịch sử (ghi mỗi lần chạy rule, 1 điểm/ngày).</p> : <RiskHistoryChart data={riskHist} />}
+          </div>
+        </div>
+      </Card>
 
       {thin && (
         <div className="mb-5 rounded-lg bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-900">

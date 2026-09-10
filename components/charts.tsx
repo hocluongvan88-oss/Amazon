@@ -2,7 +2,7 @@
 
 import React from 'react';
 import {
-  ResponsiveContainer, ComposedChart, LineChart, Line, Bar, Area, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
+  ResponsiveContainer, ComposedChart, LineChart, BarChart, Line, Bar, Area, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts';
 
 const fmtDate = (d: string) => { const x = new Date(d); return `${x.getDate()}/${x.getMonth() + 1}`; };
@@ -122,4 +122,53 @@ export function fillDays(rows: DailyPoint[], days: number): DailyPoint[] {
     out.push(by.get(key) ?? { date: key });
   }
   return out;
+}
+
+/* ---------- Waterfall (profit bridge) ---------- */
+function buildWaterfall(steps: WaterfallStep[]) {
+  const out: { name: string; base: number; bar: number; signed: number; kind: 'total' | 'delta' }[] = [];
+  let running = 0;
+  for (const s of steps) {
+    if (s.kind === 'total') { running = s.value; out.push({ name: s.name, base: Math.min(0, s.value), bar: Math.abs(s.value), signed: s.value, kind: s.kind }); continue; }
+    const start = running; running += s.value;
+    out.push({ name: s.name, base: Math.min(start, running), bar: Math.abs(s.value), signed: s.value, kind: s.kind });
+  }
+  return out;
+}
+export type WaterfallStep = { name: string; value: number; kind: 'total' | 'delta' };
+
+export function WaterfallChart({ steps, height = 260 }: { steps: WaterfallStep[]; height?: number }) {
+  const data = buildWaterfall(steps);
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+        <YAxis tickFormatter={fmtUsd} tick={{ fontSize: 11 }} width={64} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(_v, _n, p) => { const d = p.payload as { signed: number; kind: string }; return [`${d.kind === 'delta' && d.signed > 0 ? '+' : ''}${fmtUsd(d.signed)}`, d.kind === 'total' ? 'Lợi nhuận đóng góp' : 'Tác động']; }} />
+        <ReferenceLine y={0} stroke="#9ca3af" />
+        <Bar dataKey="base" stackId="w" fill="transparent" isAnimationActive={false} />
+        <Bar dataKey="bar" stackId="w" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          {data.map((d, i) => <Cell key={i} fill={d.kind === 'total' ? '#111827' : d.signed >= 0 ? '#059669' : '#dc2626'} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ---------- Risk history ---------- */
+export function RiskHistoryChart({ data, height = 160 }: { data: { date: string; risk_score: number }[]; height?: number }) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+        <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={32} />
+        <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => `Ngày ${fmtDate(String(l))}`} formatter={(v) => [`${v}`, 'Điểm rủi ro']} />
+        <ReferenceLine y={70} stroke="#dc2626" strokeDasharray="4 4" />
+        <ReferenceLine y={40} stroke="#f59e0b" strokeDasharray="4 4" />
+        <Line type="monotone" dataKey="risk_score" stroke="#7c3aed" strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
 }

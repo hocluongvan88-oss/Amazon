@@ -75,13 +75,14 @@ _Cập nhật: 2026‑09‑10 · Đối chiếu code hiện tại với khung 7�
 - [x] UI: biểu đồ xu hướng 30/90 ngày trên Tổng quan; cột Bán/ngày 7d & ETA; thẻ **Kết nối dữ liệu & gate 3‑4**; trang **Chi tiết ASIN** (`/skus/[id]`: 6 tile, 4 biểu đồ, tab gợi ý/ngoại lệ/review/COGS/snapshot, modal sửa – COGS mới đi vào lịch sử).
 - [x] **Gate**: đối soát với Seller Central (`run_reconciliation`, lệch ≤ tolerance), coverage ≥90% doanh thu có ≥20 ngày, snapshot ≤2 ngày.
 
-### Tuần 5‑6 – Profit bridge & exception queue
-- [ ] Hàm `compute_risk_score(sku_id)` = tổ hợp có trọng số của margin Δ, inventory health (DoC vs lead time), velocity change, price volatility. Trọng số trong `policy_register`.
-- [ ] Trigger `assign_recommendation_status()`: từ `risk_score` + action type → `required_approval_level` + `status` ban đầu (L0 auto‑approve trong ngưỡng, L1/L2 → pending).
-- [ ] Rule engine detect (job hằng ngày): sụt traffic/CVR, mất Featured Offer, ACoS vượt ngưỡng, margin Δ âm, tồn dưới ROP → sinh `exceptions` + `recommendations` kèm `rationale` giải thích được.
-- [ ] Trang **Profit bridge**: phân rã Δ CP theo giá/volume/fees/ads/COGS, tuần vs tuần.
-- [ ] Ngoại lệ: gán người xử lý, SLA theo P‑level, đếm quá hạn.
-- [ ] **Gate check**: bảng precision cảnh báo (operator đánh dấu đúng/sai) hiển thị trong Đo lường.
+### Tuần 5‑6 – Profit bridge & exception queue ✅ (007)
+- [x] Hàm `compute_risk_score(sku_id)` = tổ hợp có trọng số (inventory / margin Δ / velocity / volatility), trọng số từ `policy_register`; ghi `risk_components` (lý do từng thành phần, độ tin cậy) + `risk_history`.
+- [x] Trigger gán `required_approval_level`/`status` (đã có từ 005) – gợi ý do rule sinh ra đi qua cùng luồng.
+- [x] Rule engine `run_rules()` (pg_cron 03:30 UTC + nút chạy tay): STOCKOUT_IMMINENT, BELOW_REORDER_POINT, OVERSTOCK, MARGIN_EROSION, VELOCITY_DROP, NO_SALES_7D, PRICE_VOLATILITY, DATA_STALE → `exceptions` (dedupe, cooldown sau cảnh báo sai, tự đóng khi hết điều kiện) + `recommendations` kèm `rationale` giải thích được.
+- [x] Trang **Profit bridge** `/profit-bridge`: phân rã Δ CP theo sản lượng / giá / COGS / phí / ads, 7‑14‑28 ngày, waterfall + theo ASIN.
+- [x] Ngoại lệ: gán người xử lý, SLA theo P‑level (`sla_hours`), snooze, đếm quá hạn trên Tổng quan.
+- [x] **Gate check**: bảng precision theo rule (operator đánh dấu đúng/sai khi đóng) trên trang Ngoại lệ.
+- [ ] Chưa có (cần dữ liệu Amazon API): mất Featured Offer, ACoS vượt ngưỡng theo campaign, sụt CVR (chỉ có khi nhập sessions).
 
 ### Tuần 7‑8 – Inventory & replenishment
 - [ ] Forecast baseline (moving average / Holt‑Winters) lưu vào `forecasts(sku_id, date, horizon, p50, p90, model)`; backtest vs naive.

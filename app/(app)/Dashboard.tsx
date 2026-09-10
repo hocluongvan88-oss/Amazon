@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import RiskBreakdown, { type RiskComponents } from '@/components/RiskBreakdown';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { usd, num, riskLevel, RISK_META, REC_TYPE_LABEL } from '@/lib/format';
@@ -15,13 +16,13 @@ type Sku = {
   id: string; asin: string; sku: string | null; title: string;
   current_price: number; cogs: number; contribution_profit: number;
   sales_last_30d: number; inventory_qty: number; reorder_point: number;
-  stockout_risk_score: number; margin_delta: number;
+  stockout_risk_score: number; margin_delta: number; risk_score: number | null; risk_components: RiskComponents;
 };
 type Rec = {
   id: string; asin: string; type: string; title: string | null; status: string;
   risk_score: number; expected_impact: number | null; required_approval_level: string;
 };
-type Exc = { id: string; code: string; message: string; asin: string | null; resolved: boolean };
+type Exc = { id: string; code: string; message: string; asin: string | null; resolved: boolean; overdue: boolean; hours_left: number | null; snoozed: boolean };
 type Metric = { sku_id: string; velocity_7d: number | null; velocity_change_pct: number | null; days_of_cover: number | null; stockout_eta: string | null; inventory_health: string; coverage_days_30: number };
 
 type SortKey = 'profit30d' | 'risk' | 'cover' | 'title';
@@ -48,7 +49,7 @@ export default function Dashboard() {
       const [s, r, e, mt, td] = await Promise.all([
         supabase.from('amazon_skus').select('*').eq('tenant_id', tid).neq('status', 'archived'),
         supabase.from('recommendations').select('id,asin,type,title,status,risk_score,expected_impact,required_approval_level').eq('tenant_id', tid),
-        supabase.from('exceptions').select('id,code,message,asin,resolved').eq('tenant_id', tid).eq('resolved', false),
+        supabase.from('v_exception_queue').select('id,code,message,asin,resolved,overdue,hours_left,snoozed').eq('tenant_id', tid).eq('resolved', false).order('code').order('due_at'),
         supabase.rpc('sku_metrics', { t: tid }),
         supabase.rpc('tenant_daily', { t: tid, days: 90 }),
       ]);
@@ -69,9 +70,10 @@ export default function Dashboard() {
   const profit30d = skus.reduce((a, s) => a + Number(s.contribution_profit) * s.sales_last_30d, 0);
   const revenue30d = skus.reduce((a, s) => a + Number(s.current_price) * s.sales_last_30d, 0);
   const units30d = skus.reduce((a, s) => a + s.sales_last_30d, 0);
-  const atRisk = skus.filter((s) => Number(s.stockout_risk_score) >= 60);
+  const atRisk = skus.filter((s) => Number(s.risk_score ?? s.stockout_risk_score) >= 60);
   const belowReorder = skus.filter((s) => s.inventory_qty < s.reorder_point);
   const pending = recs.filter((r) => r.status === 'pending_approval');
+  const overdueExcs = excs.filter((e) => e.overdue && !e.snoozed);
   const pendingImpact = pending.reduce((a, r) => a + Number(r.expected_impact ?? 0), 0);
   const openRecsByAsin = recs.reduce<Record<string, number>>((m, r) => {
     if (r.status === 'draft' || r.status === 'pending_approval') m[r.asin] = (m[r.asin] ?? 0) + 1;
@@ -82,7 +84,7 @@ export default function Dashboard() {
 
   // ---- table ----
   const rows = skus
-    .filter((s) => !onlyRisk || Number(s.stockout_risk_score) >= 60)
+    .filter((s) => !onlyRisk || Number(s.risk_score ?? s.stockout_risk_score) >= 60)
     .filter((s) => {
       const t = q.trim().toLowerCase();
       return !t || s.asin.toLowerCase().includes(t) || s.title.toLowerCase().includes(t) || (s.sku ?? '').toLowerCase().includes(t);
@@ -90,7 +92,7 @@ export default function Dashboard() {
     .sort((a, b) => {
       switch (sort) {
         case 'profit30d': return Number(b.contribution_profit) * b.sales_last_30d - Number(a.contribution_profit) * a.sales_last_30d;
-        case 'risk': return Number(b.stockout_risk_score) - Number(a.stockout_risk_score);
+        case 'risk': return Number(b.risk_score ?? b.stockout_risk_score) - Number(a.risk_score ?? a.stockout_risk_score);
         case 'cover': return (daysOfCover(a) ?? 1e9) - (daysOfCover(b) ?? 1e9);
         case 'title': return a.title.localeCompare(b.title, 'vi');
       }
@@ -118,8 +120,8 @@ export default function Dashboard() {
           hint={`Doanh thu ${usd(revenue30d, 0)} · ${num(units30d)} đơn vị`} />
         <StatCard label="Biên lợi nhuận góp phần" value={revenue30d ? `${((profit30d / revenue30d) * 100).toFixed(1)}%` : '—'}
           hint={`Trên ${skus.length} ASIN đang theo dõi`} />
-        <StatCard label="ASIN rủi ro hết hàng" value={atRisk.length} tone={atRisk.length ? 'red' : 'default'}
-          hint={`${belowReorder.length} ASIN dưới điểm đặt hàng lại`} />
+        <StatCard label="ASIN rủi ro cao" value={atRisk.length} tone={atRisk.length ? 'red' : 'default'}
+          hint={`${belowReorder.length} dưới điểm đặt hàng · ${overdueExcs.length ? `${overdueExcs.length} ngoại lệ quá hạn SLA` : 'không quá hạn SLA'}`} />
         <StatCard label="Gợi ý chờ duyệt" value={pending.length} tone={pending.length ? 'amber' : 'default'}
           hint={pending.length ? `Tác động ước tính ${usd(pendingImpact, 0)}/tháng` : 'Không có việc tồn đọng'} />
       </div>
@@ -169,13 +171,13 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader title="Ngoại lệ đang mở" subtitle={`${excs.length} cảnh báo chưa xử lý`}
-            action={<Link href="/exceptions" className={btn.ghost}>Xem →</Link>} />
+            action={<span className="flex items-center gap-2">{overdueExcs.length > 0 && <Badge className="bg-red-600 text-white ring-red-700">{overdueExcs.length} quá hạn</Badge>}<Link href="/exceptions" className={btn.ghost}>Xem →</Link></span>} />
           {excs.length === 0 ? (
             <EmptyState title="Không có ngoại lệ" />
           ) : (
             <ul className="divide-y divide-gray-100">
               {excs.slice(0, 5).map((e) => (
-                <li key={e.id} className="px-5 py-3 flex gap-3">
+                <li key={e.id} className={`px-5 py-3 flex gap-3 ${e.overdue && !e.snoozed ? 'bg-red-50/40' : ''}`}>
                   <Badge className={e.code === 'P0' || e.code === 'P1' ? 'bg-red-50 text-red-700 ring-red-600/20' : 'bg-yellow-50 text-yellow-800 ring-yellow-600/20'}>{e.code}</Badge>
                   <div className="min-w-0">
                     <p className="text-sm text-gray-900">{e.message}</p>
@@ -226,7 +228,7 @@ export default function Dashboard() {
               {rows.map((s) => {
                 const cp = Number(s.contribution_profit);
                 const margin = s.current_price ? (cp / Number(s.current_price)) * 100 : 0;
-                const risk = Number(s.stockout_risk_score);
+                const risk = Number(s.risk_score ?? s.stockout_risk_score);
                 const lvl = riskLevel(risk);
                 const mm = metrics[s.id];
                 const cover = mm?.days_of_cover ?? daysOfCover(s);
@@ -265,7 +267,13 @@ export default function Dashboard() {
                         <div className="w-20 h-1.5 rounded-full bg-gray-200 overflow-hidden">
                           <div className={`h-full ${RISK_META[lvl].dot}`} style={{ width: `${Math.min(100, risk)}%` }} />
                         </div>
-                        <Badge className={RISK_META[lvl].cls}>{risk.toFixed(0)} · {RISK_META[lvl].label}</Badge>
+                        <span className="relative group">
+                          <Badge className={`${RISK_META[lvl].cls} cursor-help`}>{risk.toFixed(0)} · {RISK_META[lvl].label}</Badge>
+                          <span className="hidden group-hover:block absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg text-left">
+                            <span className="block text-xs font-semibold text-gray-800 mb-1.5">Vì sao rủi ro</span>
+                            <RiskBreakdown c={s.risk_components} total={risk} compact />
+                          </span>
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { RULE_LABEL } from '@/app/(app)/exceptions/ExceptionsList';
 import { supabase } from '@/lib/supabase/client';
 import { useTenant } from '@/lib/tenant';
 import { Card, CardHeader, Spinner, ErrorBox, btn, input } from '@/components/ui';
@@ -12,6 +13,7 @@ type Policy = {
   risk_weights: { margin_delta: number; inventory_health: number; velocity: number; volatility: number };
   default_lead_time_days: number; safety_stock_days: number;
   data_readiness_target_pct: number; revenue_tolerance_pct: number;
+  sla_hours: Record<'P0' | 'P1' | 'P2' | 'P3', number> | null; cooldown_days: number | null; rule_toggles: Record<string, boolean> | null;
   updated_at: string;
 };
 
@@ -38,6 +40,10 @@ export default function PolicyForm() {
   const setW = (k: keyof Policy['risk_weights']) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setP({ ...p, risk_weights: { ...p.risk_weights, [k]: Number(e.target.value) } });
   const wSum = Object.values(p.risk_weights).reduce((a, b) => a + b, 0);
+  const sla = p.sla_hours ?? { P0: 4, P1: 24, P2: 72, P3: 168 };
+  const setSla = (k: keyof typeof sla) => (e: React.ChangeEvent<HTMLInputElement>) => setP({ ...p, sla_hours: { ...sla, [k]: Number(e.target.value) } });
+  const toggles = p.rule_toggles ?? {};
+  const setToggle = (code: string, on: boolean) => { const t = { ...toggles }; if (on) delete t[code]; else t[code] = false; setP({ ...p, rule_toggles: t }); };
 
   const problems: string[] = [];
   if (p.risk_l0_max > p.risk_l1_max) problems.push('Ngưỡng L0 phải ≤ ngưỡng L1');
@@ -107,6 +113,25 @@ export default function PolicyForm() {
           <F label="Safety stock" v={p.safety_stock_days} on={set('safety_stock_days')} ro={ro} unit="ngày" step={1} />
           <F label="Gate sẵn sàng dữ liệu" v={p.data_readiness_target_pct} on={set('data_readiness_target_pct')} ro={ro} unit="% doanh thu" />
           <F label="Sai lệch đối soát cho phép" v={p.revenue_tolerance_pct} on={set('revenue_tolerance_pct')} ro={ro} unit="%" step={0.5} />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader title="SLA ngoại lệ & rule engine" subtitle="Thời hạn xử lý theo mức ưu tiên; rule tắt sẽ không mở ngoại lệ mới (ngoại lệ cũ tự đóng ở lần chạy kế)." />
+        <div className="p-5 grid sm:grid-cols-5 gap-4">
+          <F label="SLA P0" v={sla.P0} on={setSla('P0')} ro={ro} unit="giờ" step={1} />
+          <F label="SLA P1" v={sla.P1} on={setSla('P1')} ro={ro} unit="giờ" step={1} />
+          <F label="SLA P2" v={sla.P2} on={setSla('P2')} ro={ro} unit="giờ" step={1} />
+          <F label="SLA P3" v={sla.P3} on={setSla('P3')} ro={ro} unit="giờ" step={1} />
+          <F label="Cooldown sau cảnh báo sai" v={p.cooldown_days ?? 7} on={set('cooldown_days')} ro={ro} unit="ngày" step={1} />
+        </div>
+        <div className="px-5 pb-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {Object.entries(RULE_LABEL).map(([code, label]) => (
+            <label key={code} className={`flex items-center gap-2 text-sm rounded-lg border px-3 py-2 ${toggles[code] === false ? 'border-gray-200 text-gray-400' : 'border-emerald-200 bg-emerald-50/40 text-gray-800'}`}>
+              <input type="checkbox" className="rounded" disabled={ro} checked={toggles[code] !== false} onChange={(e) => setToggle(code, e.target.checked)} />
+              <span>{label}<span className="block text-[10px] font-mono text-gray-400">{code}</span></span>
+            </label>
+          ))}
         </div>
       </Card>
 
